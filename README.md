@@ -25,7 +25,6 @@ Requirements:
 - numpy
 - PyQT5
 - PyTorch
-- OpenAI baselines
 - matplotlib
 
 Start by manually installing PyTorch. See the [PyTorch website](http://pytorch.org/)
@@ -57,15 +56,6 @@ cd pytorch_rl
 # PyTorch
 conda install pytorch torchvision -c soumith
 
-# Dependencies needed by OpenAI baselines
-sudo apt install libopenmpi-dev zlib1g-dev cmake
-
-# OpenAI baselines
-git clone https://github.com/openai/baselines.git
-cd baselines
-pip3 install -e .
-cd ..
-
 # Other requirements
 pip3 install -r requirements.txt
 ```
@@ -84,13 +74,14 @@ To run the interactive UI application:
 The environment being run can be selected with the `--env-name` option, eg:
 
 ```
-./main.py --env-name MiniGrid-Fetch-8x8-v0
+./main.py --env-name MiniGrid-Fetch-8x8-N3-v0
 ```
 
-Basic offline training code implementing ACKTR can be run with:
+Basic reinforcement learning code is provided in the `pytorch_rl` subdirectory.
+You can perform training using the A2C algorithm with:
 
 ```
-python3 pytorch_rl/main.py --env-name MiniGrid-Empty-6x6-v0 --no-vis --num-processes 32 --algo acktr
+python3 pytorch_rl/main.py --env-name MiniGrid-Empty-6x6-v0 --no-vis --num-processes 48 --algo a2c
 ```
 
 To see the available environments and their implementation, please have a look at
