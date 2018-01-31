@@ -5,13 +5,19 @@ from gym import spaces
 
 try:
     import gym_minigrid
+    from gym_minigrid.envs import teacher
     from gym_minigrid.wrappers import *
 except:
     pass
 
 def make_env(env_id, seed, rank, log_dir):
     def _thunk():
-        env = gym.make(env_id)
+        
+        if env_id=='MultiRoom-Teacher':
+            env=gym.make('MiniGrid-MultiRoom-N6-v0')
+            env=teacher.Teacher(env)
+        else:
+            env = gym.make(env_id)
 
         env.seed(seed + rank)
 
@@ -39,4 +45,11 @@ class WrapPyTorch(gym.ObservationWrapper):
         )
 
     def _observation(self, observation):
-        return observation.transpose(2, 0, 1)
+     
+        return [observation['image'].transpose(2, 0, 1),observation['advice']]
+    
+    #def _observation(self, observation):
+        #return observation['image'].transpose(2, 0, 1)
+    
+    
+    

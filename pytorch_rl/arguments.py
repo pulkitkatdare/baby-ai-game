@@ -5,7 +5,7 @@ import torch
 
 def get_args():
     parser = argparse.ArgumentParser(description='RL')
-    parser.add_argument('--algo', default='a2c',
+    parser.add_argument('--algo', default='acktr',
                         help='algorithm to use: a2c | ppo | acktr')
     parser.add_argument('--lr', type=float, default=7e-4,
                         help='learning rate (default: 7e-4)')
@@ -27,7 +27,7 @@ def get_args():
                         help='value loss coefficient (default: 0.5)')
     parser.add_argument('--seed', type=int, default=1,
                         help='random seed (default: 1)')
-    parser.add_argument('--num-processes', type=int, default=32,
+    parser.add_argument('--num-processes', type=int, default=2,
                         help='how many training CPU processes to use (default: 32)')
     parser.add_argument('--num-steps', type=int, default=5,
                         help='number of forward steps in A2C (default: 5)')
@@ -47,7 +47,7 @@ def get_args():
                         help='vis interval, one log per n updates (default: 100)')
     parser.add_argument('--num-frames', type=int, default=10e6,
                         help='number of frames to train (default: 10e6)')
-    parser.add_argument('--env-name', default='PongNoFrameskip-v4',
+    parser.add_argument('--env-name', default='MultiRoom-Teacher',
                         help='environment to train on (default: PongNoFrameskip-v4)')
     parser.add_argument('--log-dir', default='/tmp/gym/',
                         help='directory to save agent logs (default: /tmp/gym)')

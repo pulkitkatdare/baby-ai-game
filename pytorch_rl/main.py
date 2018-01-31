@@ -41,7 +41,15 @@ except OSError:
     for f in files:
         os.remove(f)
 
+
+
+
 def main():
+    
+    #to be deleted after debug
+    global envs,obs
+    
+    
     print("#######")
     print("WARNING: All rewards are clipped or normalized so you need to use a monitor (see envs.py) or visdom plot to get true rewards")
     print("#######")
@@ -105,14 +113,24 @@ def main():
     current_obs = torch.zeros(args.num_processes, *obs_shape)
 
     def update_current_obs(obs):
+        global text
+        #print('top')
         shape_dim0 = envs.observation_space.shape[0]
-        obs = torch.from_numpy(obs).float()
+        #img,txt = torch.from_numpy(np.stack(obs[:,0])).float(),np.stack(obs[:,1])
+
+        images,text = torch.from_numpy(np.stack(obs[:,0])).float(),np.stack(obs[:,1])
         if args.num_stack > 1:
             current_obs[:, :-shape_dim0] = current_obs[:, shape_dim0:]
-        current_obs[:, -shape_dim0:] = obs
+        current_obs[:, -shape_dim0:] = images
 
     obs = envs.reset()
+    print(obs.shape)
+    
+    #envs.getText()
+    #print(txt)
     update_current_obs(obs)
+    print(current_obs.shape)
+    
 
     rollouts.observations[0].copy_(current_obs)
 
@@ -136,6 +154,7 @@ def main():
             cpu_actions = action.data.squeeze(1).cpu().numpy()
 
             # Obser reward and next obs
+            #print('actions',cpu_actions)
             obs, reward, done, info = envs.step(cpu_actions)
             reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
             episode_rewards += reward
@@ -153,7 +172,6 @@ def main():
                 current_obs *= masks.unsqueeze(2).unsqueeze(2)
             else:
                 current_obs *= masks
-
             update_current_obs(obs)
             rollouts.insert(step, current_obs, states.data, action.data, action_log_prob.data, value.data, reward, masks)
 
@@ -244,6 +262,7 @@ def main():
         rollouts.after_update()
 
         if j % args.save_interval == 0 and args.save_dir != "":
+            #print('current advice',envs.s)
             save_path = os.path.join(args.save_dir, args.algo)
             try:
                 os.makedirs(save_path)
