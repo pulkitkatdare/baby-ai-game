@@ -5,7 +5,7 @@ from gym import spaces
 
 try:
     import gym_minigrid
-    from gym_minigrid.envs import teacher
+    import teacher
     from gym_minigrid.wrappers import *
 except:
     pass
