@@ -13,7 +13,7 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor
 
 import gym
 import gym_minigrid
-
+from gym_aigame.envs import teacher
 from model.training import selectAction
 from gym_aigame.envs import teacher
 
@@ -306,7 +306,11 @@ def main(argv):
 
     # Load the gym environment
     env = gym.make(options.env_name)
+<<<<<<< Updated upstream
     env = teacher.Teacher(env)
+=======
+	env=teacher.Teacher(env)
+>>>>>>> Stashed changes
     # Create the application window
     app = QApplication(sys.argv)
     window = AIGameWindow(env)

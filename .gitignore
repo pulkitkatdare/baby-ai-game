@@ -1,7 +1,7 @@
 model/glove50.txt
 trained_models
 model/InferSent/infersent.allnli.pickle
-
+model/InferSent/dataset
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

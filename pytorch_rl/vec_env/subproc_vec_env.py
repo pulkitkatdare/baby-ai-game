@@ -14,10 +14,20 @@ def worker(remote, parent_remote, env_fn_wrapper):
             remote.send((ob, reward, done, info))
         elif cmd == 'reset':
             ob = env.reset()
+            
+            #txt=env.advice
+            #print(txt)
+            
             remote.send(ob)
+            
+       
+            
+            
         elif cmd == 'reset_task':
             ob = env.reset_task()
             remote.send(ob)
+            
+            
         elif cmd == 'close':
             remote.close()
             break
@@ -63,6 +73,11 @@ class SubprocVecEnv(VecEnv):
         for remote in self.remotes:
             remote.send(('reset', None))
         return np.stack([remote.recv() for remote in self.remotes])
+    
+    def getText(self):
+        for remote in self.remotes:
+            remote.send(('getText', None))
+        #return np.stack([remote.recv() for remote in self.remotes])
 
     def reset_task(self):
         for remote in self.remotes:
