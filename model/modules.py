@@ -111,12 +111,44 @@ class LanguageModule(nn.Module):
             num_layers=1,
             batch_first=True)
 
-    def forward(self, x):
+    def forward(self, x, input_lengths=None):
         embedded_input = self.embeddings(x)
+        if input_lengths is not None:  # Variable lenghts
+            embedded_input = nn.utils.rnn.pack_padded_sequence(
+                embedded_input, input_lengths, batch_first=True)
         out, hn = self.lstm(embedded_input)
+        if input_lengths is not None:  # Variable lenghts
+            out, _ = nn.utils.rnn.pad_packed_sequence(
+                out, batch_first=True)
         h, c = hn
 
         return h
+
+    def forward_reordering(self, x, input_lengths):
+        if len(set(input_lengths)) == 1:
+            return self(x)
+        else:
+            maxlen = max(input_lengths)
+            sorted_x = Variable(
+                torch.zeros(
+                    len(input_lengths),
+                    maxlen).type_as(
+                    x[0].data))
+            len_tensor = torch.from_numpy(np.array(input_lengths)).type_as(
+                x[0].data)
+            sorted_len, sorted_index = torch.sort(len_tensor, descending=True)
+            inputs_len = []
+            for i in range(len(input_lengths)):
+                sorted_x[i, 0:sorted_len[i]] = x[sorted_index[i]][
+                    0:sorted_len[i]
+                ].view(-1)
+                inputs_len.append(sorted_len[i])
+
+            result = self(sorted_x, inputs_len)
+            result = torch.index_select(
+                result, dim=1, index=Variable(sorted_index)
+            )
+            return result
 
     def LP_Inv_Emb(self, x):
         return F.linear(x, self.embeddings.weight)
@@ -196,11 +228,26 @@ class ActionModule(nn.Module):
         self.hidden_1 = None
         self.hidden_2 = None
 
+    def repackage_hidden(self, h):
+        """ Wraps hidden states in new Variables,
+            to detach them from their history.
+        """
+        if isinstance(h, torch.autograd.Variable):
+            return torch.autograd.Variable(h.data)
+        else:
+            return tuple(self.repackage_hidden(v) for v in h)
+
     def detach_hidden_states(self):
         if not self.hidden_1 is None:
-            self.hidden_1 = (l.detach() for l in self.hidden_1)
+            self.hidden_1 = self.repackage_hidden(self.hidden_1)
         if not self.hidden_2 is None:
-            self.hidden_2 = (l.detach() for l in self.hidden_2)
+            self.hidden_2 = self.repackage_hidden(self.hidden_2)
+
+    # def detach_hidden_states(self):
+    #     if not self.hidden_1 is None:
+    #         self.hidden_1 = (l.detach() for l in self.hidden_1)
+    #     if not self.hidden_2 is None:
+    #         self.hidden_2 = (l.detach() for l in self.hidden_2)
 
     def forward(self, x):
         '''
@@ -342,13 +389,50 @@ class TemporalAutoEncoder(nn.Module):
         return out
 
 
+class RNNStatePredictor(nn.Module):
+
+    def __init__(self, policy_network, vision_module,
+                 input_size=128, vision_encoded_shape=[64, 7, 7],
+                 ouput_size=1024):
+        super(TemporalAutoEncoder, self).__init__()
+
+        self.policy_network = policy_network
+        self.vision_module = vision_module
+        self.vision_encoded_shape = vision_encoded_shape
+        self.input_size = input_size
+        self.hidden_size = reduce(operator.mul, vision_encoded_shape, 1)
+        self.ouput_size = ouput_size
+
+        self.linear_1 = nn.Linear(input_size, self.hidden_size)
+        self.linear_2 = nn.Linear(self.hidden_size, self.ouput_size)
+
+    def forward(self, visual_input, logit_action):
+        '''
+        Argument:
+            visual_encoded: output from the visual module, has shape [1, 64, 7, 7]
+            logit_action: output action logit from policy, has shape [1, 10]
+        '''
+        visual_encoded = self.vision_module(visual_input)
+
+        action_out = self.policy_network.tAE(logit_action)  # [1, 128]
+        action_out = self.linear_1(action_out)
+        action_out = action_out.view(
+            action_out.size()[0], *self.vision_encoded_shape)
+
+        combine = torch.mul(action_out, visual_encoded)
+
+        out = self.linear_2(combine)
+        return out
+
+
 class LanguagePrediction(nn.Module):
 
-    def __init__(self, language_module,
+    def __init__(self, language_module, vision_module,
                  vision_encoded_shape=[64, 7, 7],
                  hidden_size=128):
         super(LanguagePrediction, self).__init__()
         self.language_module = language_module
+        self.vision_module = vision_module
 
         input_size = reduce(operator.mul, vision_encoded_shape, 1)
 
@@ -356,7 +440,9 @@ class LanguagePrediction(nn.Module):
             nn.Linear(input_size, hidden_size),
             nn.ReLU())
 
-    def forward(self, vision_encoded):
+    def forward(self, visual_input):
+
+        vision_encoded = self.vision_module(visual_input)
 
         vision_encoded_flatten = vision_encoded.view(
             vision_encoded.size()[0], -1)
@@ -394,23 +480,134 @@ class RewardPrediction(nn.Module):
         '''
         batch_visual = []
         batch_instruction = []
+        batch_instruction_len = []
 
         for batch in x:
             visual = [b.image for b in batch]
             instruction = [b.mission for b in batch]
+            instruction_len = [b.mission.numel() for b in batch]
 
             batch_visual.append(torch.cat(visual, 0))
-            batch_instruction.append(torch.cat(instruction, 0))
+            # batch_instruction.append(torch.cat(instruction, 0))
+            batch_instruction.extend(instruction)
+            batch_instruction_len.extend(instruction_len)
+
+        if not (self.language_module is None):
+            if len(set(batch_instruction_len)) == 1:
+                batch_instruction = torch.cat(batch_instruction, 0)
+                inputs_len = None
+            else:
+                maxlen = max(batch_instruction_len)
+                sorted_instruction = Variable(torch.zeros(
+                    len(batch_instruction_len), maxlen
+                ).type_as(
+                    batch_instruction[0].data
+                ))
+                len_tensor = torch.from_numpy(
+                    np.array(batch_instruction_len)
+                ).type_as(batch_instruction[0].data)
+                sorted_len, sorted_index = torch.sort(
+                    len_tensor, descending=True)
+                inputs_len = []
+                for i in range(len(batch_instruction_len)):
+                    sorted_instruction[i, 0:sorted_len[i]] = batch_instruction[
+                        sorted_index[i]].view(-1)
+                    inputs_len.append(sorted_len[i])
+                batch_instruction = sorted_instruction
 
         batch_visual_encoded = self.vision_module(torch.cat(batch_visual, 0))
         batch_instruction_encoded = None
         if not (self.language_module is None):
-            batch_instruction_encoded = self.language_module(
-                torch.cat(batch_instruction, 0))
+            if inputs_len is None:
+                batch_instruction_encoded = self.language_module(
+                    batch_instruction)
+            else:
+                batch_instruction_encoded = self.language_module(
+                    batch_instruction, inputs_len)
+                batch_instruction_encoded = torch.index_select(
+                    batch_instruction_encoded,
+                    dim=1,
+                    index=Variable(sorted_index)
+                )
 
         batch_mixed = self.mixing_module(
             batch_visual_encoded, batch_instruction_encoded)
         batch_mixed = batch_mixed.view(len(batch_visual), -1)
 
         out = self.linear(batch_mixed)
+        return out
+
+
+class VisualTargetClassification(nn.Module):
+
+    def __init__(self, vision_module, language_module, mixing_module,
+                 vision_encoded_shape=[64, 7, 7],
+                 language_encoded_size=128):
+        super(VisualTargetClassification, self).__init__()
+
+        self.vision_module = vision_module
+        self.language_module = language_module
+        self.mixing_module = mixing_module
+        self.linear = nn.Linear(
+            reduce(
+                operator.mul,
+                vision_encoded_shape, 1
+            ) + language_encoded_size,
+            1
+        )
+
+    def forward(self, x):
+        '''
+            x: states including image and instruction,
+        '''
+        batch_visual = [b.image for b in x]
+        batch_instruction = [b.mission for b in x]
+        batch_instruction_len = [b.mission.numel() for b in x]
+
+        if not (self.language_module is None):
+            if len(set(batch_instruction_len)) == 1:
+                batch_instruction = torch.cat(batch_instruction, 0)
+                inputs_len = None
+            else:
+                maxlen = max(batch_instruction_len)
+                sorted_instruction = Variable(torch.zeros(
+                    len(batch_instruction_len), maxlen
+                ).type_as(
+                    batch_instruction[0].data
+                ))
+                len_tensor = torch.from_numpy(
+                    np.array(batch_instruction_len)
+                ).type_as(batch_instruction[0].data)
+                sorted_len, sorted_index = torch.sort(
+                    len_tensor, descending=True)
+                inputs_len = []
+                for i in range(len(batch_instruction_len)):
+                    sorted_instruction[i, 0:sorted_len[i]] = batch_instruction[
+                        sorted_index[i]].view(-1)
+                    inputs_len.append(sorted_len[i])
+                batch_instruction = sorted_instruction
+
+        batch_visual_encoded = self.vision_module(torch.cat(batch_visual, 0))
+        batch_instruction_encoded = None
+        if not (self.language_module is None):
+            if inputs_len is None:
+                batch_instruction_encoded = self.language_module(
+                    batch_instruction)
+            else:
+                batch_instruction_encoded = self.language_module(
+                    batch_instruction, inputs_len)
+                batch_instruction_encoded = torch.index_select(
+                    batch_instruction_encoded,
+                    dim=1,
+                    index=Variable(sorted_index)
+                )
+
+        batch_mixed = self.mixing_module(
+            batch_visual_encoded, batch_instruction_encoded)
+        batch_mixed = batch_mixed.view(len(batch_visual), -1)
+
+        out = self.linear(batch_mixed)
+
+        # Use F.binary_cross_entropy_with_logits() for computing the
+        # classification loss on this output
         return out

@@ -14,7 +14,8 @@ ReplayFrame = namedtuple(
      'next_state',
      'reward',
      'value',
-     'terminal'))
+     'terminal',
+     'vtcind'))
 
 State = namedtuple('State', ('image', 'mission', 'advice'))
 
@@ -27,7 +28,9 @@ class ReplayMemory(object):
         self.top_index = 0
         self.zero_reward_indices = []  # frame indices for zero rewards
         self.nonzero_reward_indices = []  # frame indices for non zero rewards
+        self.positive_reward_indices = []  # frame indices for positive rewards
         self.num_frame_rp = num_frame_rp  # num of frames for reward prediction
+        self.rp_frame_index = 0
 
     def push(self, frame):
         # ReplayFrame(*args)
@@ -38,17 +41,20 @@ class ReplayMemory(object):
             return
 
         frame_index = self.top_index + len(self.memory)
+        self.rp_frame_index += 1
         was_full = self.full()
 
         # append frame
         self.memory.append(frame)
 
         # append index
-        if frame_index >= self.num_frame_rp:
+        if self.rp_frame_index > self.num_frame_rp:
             if frame.reward == 0:
                 self.zero_reward_indices.append(frame_index)
             else:
                 self.nonzero_reward_indices.append(frame_index)
+                if frame.reward > 0:
+                    self.positive_reward_indices.append(frame_index)
 
         if was_full:
             self.top_index += 1
@@ -62,6 +68,10 @@ class ReplayMemory(object):
             if len(self.nonzero_reward_indices) > 0 and \
                self.nonzero_reward_indices[0] < min_frame_index:
                 self.nonzero_reward_indices.pop(0)
+
+            if len(self.positive_reward_indices) > 0 and \
+               self.positive_reward_indices[0] < min_frame_index:
+                self.positive_reward_indices.pop(0)
 
     def sample(self, batch_size):
         start_index = np.random.randint(0, len(self.memory) - batch_size)
@@ -133,6 +143,33 @@ class ReplayMemory(object):
 
         return sampled_batch
 
+    def positive_skewed_sample(self, batch_size, number=0):
+        """
+        Sample self.num_frames_rew_pre+1 successive frames for reward prediction.
+        """
+        number = min(number, self.num_frame_rp)
+        sampled_batch = []
+
+        size = min(batch_size, len(self.positive_reward_indices))
+
+        for k in range(size):
+
+            index = np.random.randint(len(self.positive_reward_indices))
+            end_frame_index = self.positive_reward_indices[index]
+
+            start_frame_index = end_frame_index - number
+            raw_start_frame_index = start_frame_index - self.top_index
+
+            sampled_frames = []
+
+            for i in range(number + 1):
+                frame = self.memory[raw_start_frame_index + i]
+                sampled_frames.append(frame)
+
+            sampled_batch.extend(sampled_frames)
+
+        return sampled_batch
+
     def __len__(self):
         return(len(self.memory))
 
@@ -140,6 +177,9 @@ class ReplayMemory(object):
         if (len(self.memory) >= self.capacity):
             return True
         return False
+
+    def reset_rp_frame_index(self):
+        self.rp_frame_index = 0
 
     def clear(self):
         self.memory.clear()

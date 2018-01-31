@@ -15,7 +15,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 from torch.distributions import Categorical
 
-from model import ActorCritic_Agent, Checkpoint
+from model import Generic_ActorCritic_Agent, Checkpoint
 
 import gym
 import gym_minigrid
@@ -47,24 +47,19 @@ parser.add_argument('--max-iters', type=int, default=1000000,
 parser.add_argument('--num-steps', type=int, default=20,
                     help='number max of forward steps in AC (default: 20).' +
                     ' Use 0 to go through complete episodes before updating.')
-parser.add_argument('--no-memory', action='store_true', default=False,
-                    help='Disables Memory Replay.')
-parser.add_argument('--memory-size', default=2000,
-                    type=int, help="Replay memory size (default: 2000).")
-parser.add_argument('--memory-start', default=200,
-                    type=int, help="Replay memory start size (default: 200).")
-parser.add_argument('--num-frame-rp', default=3, type=int,
-                    help="Num frames for the reward prediction (default: 3)")
 parser.add_argument('--render', action='store_true',
                     help='render the environment')
-parser.add_argument('--num-checkpoints', default=50,
-                    type=int, help="Number of check points (default: 50).")
+parser.add_argument('--num-checkpoints', default=5,
+                    type=int, help="Number of check points (default: 5).")
 parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='interval between training status logs (default: 10)')
 parser.add_argument('--expt-dir', type=str, default='./experiment',
                     help='Path to experiment directory. If load_checkpoint ' +
                     'is True, then path to checkpoint directory has to be ' +
                     'provided')
+parser.add_argument('--num-processes', type=int, default=16,
+                    help='how many training processes to use ' +
+                    '(default: 16)')
 parser.add_argument('--load-checkpoint', action='store', help='The name of ' +
                     'the checkpoint to load, usually an encoded time string')
 parser.add_argument('--resume', action='store_true', default=False,
@@ -72,47 +67,26 @@ parser.add_argument('--resume', action='store_true', default=False,
                     'the latest checkpoint')
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
-args.usememory = not args.no_memory
 if args.num_steps == 0:
     args.num_steps = None
 args.checkpoint_every = int(args.max_iters / (args.num_checkpoints + 1)) + 1
 
-SavedAction = namedtuple('SavedAction', ['log_prob', 'value'])
 
+def make_env_fn(env_id, seed, rank=0):
+    def _create():
+        env = gym.make(env_id)
+        if hasattr(env, 'seed'):
+            env.seed(seed + rank)
+        return env
 
-def visualTargetIndicator(env, visualObs):
-    grid = minigrid.Grid.decode(visualObs)
-    objs = []
-    for j in range(0, grid.height):
-        for i in range(0, grid.width):
-            v = grid.get(i, j)
-            if v is not None:
-                objs.append(v)
-    for obj in objs:
-        if obj.type == env.targetType and (obj.color == env.targetColor):
-            return True
-    return False
-
-
-def languagePredictionIndicator(env, visualObs):
-    grid = minigrid.Grid.decode(visualObs)
-    objs = []
-    for j in range(0, grid.height):
-        for i in range(0, grid.width):
-            v = grid.get(i, j)
-            if v is not None:
-                objs.append(v)
-    res = set()
-    for obj in objs:
-        res.add(str(obj.type))
-        res.add(str(obj.color))
-    return list(res)
+    return _create
 
 
 def main():
 
-    # env = gym.make(args.env)
-    env = gym.make('MiniGrid-Fetch-8x8-v0')
+    os.environ['OMP_NUM_THREADS'] = '1'
+
+    # args.env = 'MiniGrid-Fetch-8x8-v0'
 
     # Build the vocabulary dictionnary of the agent
     vocab_words = [
@@ -122,16 +96,28 @@ def main():
     ]
     specials = ['<pad>', '<unk>', '<eos>']
     vocab_words.sort()
-    target_keywords = [
-        'green', 'blue', 'purple', 'yellow', 'grey', 'red',
-        'square', 'circle', 'key', 'ball', 'wall', 'door',
-        'locked_door', 'box', 'goal'
-    ]
 
     vocab_dict = {}
     vocab_dict.update({tok: i for i, tok in enumerate(specials)})
     vocab_dict.update({tok: i + len(specials)
                        for i, tok in enumerate(vocab_words)})
+
+    def process_string(text):
+        if (text is None) or (text == ''):
+            return [vocab_dict['<eos>']]
+        else:
+            words = text.strip().lower().split()
+            word_ids = []
+            for i in range(len(words)):
+                key = words[i].strip()
+                if key == '':
+                    continue
+                elif key in vocab_dict:
+                    word_ids.append(vocab_dict[key])
+                else:
+                    word_ids.append(vocab_dict['<unk>'])
+            word_ids.append(vocab_dict['<eos>'])
+            return word_ids
 
     # Create the model arguments (No need in test mode when loading a saved
     # model)
@@ -141,40 +127,32 @@ def main():
         vocab_size = 10
         if not (vocab_dict is None or len(vocab_dict) == 0):
             vocab_size = len(vocab_dict)
+        env = make_env_fn(args.env, 0, 0)()
         model_args = {
             'img_shape': [3, 7, 7],
             'action_space': env.action_space.n,
             'channels': [3, 16, 32],
             'kernels': [4, 3],
             'strides': None,
-            'langmod': True,
+            'langmod': False,
             'vocab_size': vocab_size,
             'embed_dim': 64,
             'langmod_hidden_size': 64,
             'actmod_hidden_size': 128,
             'policy_hidden_size': 64,
             'langmod_pred': False,
-            'num_frames_reward_prediction': args.num_frame_rp,
         }
 
     # Create the RL agent based on the environment
-    agent = ActorCritic_Agent(
-        env, args, device=None,
+    agent = Generic_ActorCritic_Agent(
+        make_env_fn, args, device=None,
         expt_dir=args.expt_dir,
         checkpoint_every=args.checkpoint_every,
         log_interval=args.log_interval,
-        usememory=args.usememory,
-        memory_capacity=args.memory_size,
-        num_frame_rp=args.num_frame_rp,
-        memory_start=args.memory_start,
         input_scale=env.observation_space.high[0][0][0],
         reward_scale=1000,
         pad_sym='<pad>',
-        eos_sym='<eos>',
-        unk_sym='<unk>',
-        vocab_dict=vocab_dict,
-        target_keywords=target_keywords,
-        visual_target_func_ind=visualTargetIndicator,
+        process_string_func=process_string,
         model_args=model_args,
     )
 

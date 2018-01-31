@@ -28,6 +28,12 @@ class ActorCritic_Agent(object):
                  reward_clip=False,
                  reward_min=-1,
                  reward_max=1,
+                 pad_sym='<pad>',
+                 eos_sym='<eos>',
+                 unk_sym='<unk>',
+                 vocab_dict=None,
+                 target_keywords=None,
+                 visual_target_func_ind=None,
                  model_args=None):
         self.args = args
         torch.manual_seed(self.args.seed)
@@ -40,13 +46,40 @@ class ActorCritic_Agent(object):
         self.reward_clip = reward_clip
         self.reward_min = reward_min
         self.reward_max = reward_max
+        self.pad_sym = pad_sym
+        self.eos_sym = eos_sym
+        self.unk_sym = unk_sym
+        self.vtcFuncInd = visual_target_func_ind
+        self.vocab = vocab_dict
+        self.target_keywords = target_keywords
+        if self.vocab is None:
+            self.vocab = {self.pad_sym: 0, self.unk_sym: 1, self.eos_sym: 2}
+
+        self.pad_id = self.vocab[self.pad_sym]
+        self.unk_id = self.vocab[self.unk_sym]
+        self.eos_id = self.vocab[self.eos_sym]
+        assert self.pad_id == 0, 'The pad_id must be zero.'
+
+        self.lpweight = torch.ones(len(self.vocab))
+        self.lpweight[self.pad_id] = 0
+        self.lpweight[self.eos_id] = 0
+        if self.target_keywords is not None and (
+                len(self.target_keywords) > 0):
+            self.target_keywords = set([
+                self.vocab[a.lower().strip()] for a in self.target_keywords
+            ])
+            for k, v in self.vocab.items():
+                if v not in self.target_keywords:
+                    self.lpweight[v] = 0
+
         if hasattr(self.env, 'seed'):
             self.env.seed(self.args.seed)
         self.model = None
         if model_args is not None:
             self.model = Model(**model_args)
-        if self.cuda:
-            self.model.cuda(device)
+            if self.cuda:
+                self.model.cuda(device)
+                self.lpweight.cuda(device)
 
         if self.model is not None:
             modelSize = 0
@@ -80,10 +113,30 @@ class ActorCritic_Agent(object):
             reward = min(max(reward, self.reward_min), self.reward_max)
         return reward
 
+    def process_string(self, text):
+        if (text is None) or (text == ''):
+            return [self.eos_id]
+        else:
+            words = text.strip().lower().split()
+            word_ids = []
+            for i in range(len(words)):
+                key = words[i].strip()
+                if key == '':
+                    continue
+                elif key in self.vocab:
+                    word_ids.append(self.vocab[key])
+                else:
+                    word_ids.append(self.unk_id)
+            word_ids.append(self.eos_id)
+            return word_ids
+
     def process_state(self, state, volatile=False):
-        eos_id = 1
         if not isinstance(state, dict):
-            state = {'image': state, 'advice': [eos_id], 'mission': [eos_id]}
+            state = {'image': state, 'mission': '', 'advice': ''}
+
+        state['mission'] = self.process_string(state['mission'])
+        state['advice'] = self.process_string(state['advice'])
+
         img = np.expand_dims(np.transpose(state['image'], (2, 0, 1)), 0)
         img = img / self.input_scale
         order = np.expand_dims((state['mission']), 0)
@@ -124,12 +177,17 @@ class ActorCritic_Agent(object):
             action = action.data.cpu().numpy()[0]
 
             nextstate, reward, done, _ = self.env.step(action)
+            vtcInd = 0
+            if not self.vtcFuncInd is None:
+                img = nextstate if not isinstance(
+                    nextstate, dict) else nextstate['image']
+                vtcInd = int(self.vtcFuncInd(self.env, img))
             next_state = self.process_state(nextstate)
             reward = self.process_reward(reward)
 
             frame = ReplayFrame(
                 state, logit.detach(), next_state,
-                reward, value.detach(), done
+                reward, value.detach(), done, vtcInd
             )
             self.memory.push(frame)
             if not done:
@@ -138,6 +196,7 @@ class ActorCritic_Agent(object):
                 state = self.env.reset()
                 state = self.process_state(state)
                 self.model.reset_hidden_states()
+                self.memory.reset_rp_frame_index()
 
         if inside:
             print('The memory has been pre-filled.')
@@ -151,17 +210,15 @@ class ActorCritic_Agent(object):
             output[i] = R_vr
         return output
 
-    def optimize_model(self, values, log_probs, rewards, entropies):
+    def identify_lp_target_keywords(self, mission):
+        mis = mission.view(-1)
+        out = []
+        for i in range(mis.numel()):
+            if mis.data[i] in self.target_keywords:
+                out.append(mis.data[i])
+        return out
 
-        # print('values:')
-        # for i in range(len(values)):
-        #     print(i, ':', values[i].volatile)
-        # print('log_probs:')
-        # for i in range(len(log_probs)):
-        #     print(i, ':', log_probs[i].volatile)
-        # print('entropies:')
-        # for i in range(len(entropies)):
-        #     print(i, ':', entropies[i].volatile)
+    def optimize_model(self, values, log_probs, rewards, entropies):
 
         R = values[-1]
         gae = torch.zeros(1, 1).type_as(R.data)
@@ -189,6 +246,7 @@ class ActorCritic_Agent(object):
         tae_loss = 0
         reward_prediction_loss = 0
         value_replay_loss = 0
+        vtc_loss = 0  # visual_target_classification_loss
 
         if not self.memory is None:
             # Non-skewed sampling from experience buffer
@@ -196,16 +254,34 @@ class ActorCritic_Agent(object):
             auxiliary_batch = ReplayFrame(*zip(*auxiliary_samples))
 
             # TAE Loss
-            visual_input = auxiliary_batch.state
-            visual_input = torch.cat([t.image for t in visual_input], 0)
-            visual_target = auxiliary_batch.next_state
-            visual_target = torch.cat([t.image for t in visual_target], 0)
-            action_logit = torch.cat(auxiliary_batch.action_logit, 0)
-            tae_output = self.model.tAE(visual_input, action_logit)
-            tae_loss = torch.sum((tae_output - visual_target).pow(2))
+            # print('tae pred')
+            if self.model.tAE is not None:
+                visual_input = auxiliary_batch.state
+                visual_input = torch.cat([t.image for t in visual_input], 0)
+                visual_target = auxiliary_batch.next_state
+                visual_target = torch.cat([t.image for t in visual_target], 0)
+                action_logit = torch.cat(auxiliary_batch.action_logit, 0)
+                tae_output = self.model.tAE(visual_input, action_logit)
+                tae_loss = torch.sum((tae_output - visual_target).pow(2))
+
+            # visual target classification loss
+            # print('vtc pred')
+            if (self.model.visual_target_classificator is not None) and (
+                    self.vtcFuncInd is not None):
+                vtc_inputs = auxiliary_batch.next_state
+                vtc_target = torch.from_numpy(
+                    np.array(auxiliary_batch.vtcind)
+                ).type_as(
+                    vtc_inputs[0].image.data
+                )
+
+                vtc_out = self.model.visual_target_classificator(vtc_inputs)
+                vtc_loss = F.binary_cross_entropy_with_logits(
+                    vtc_out, Variable(vtc_target).view(-1, 1))
 
             # Value function replay
             # Non-skewed sampling from experience buffer
+            # print('val pred')
             auxiliary_seq_samples = self.memory.sample_sequence(
                 self.args.batch_size)
             auxiliary_seq_batch = ReplayFrame(*zip(*auxiliary_seq_samples))
@@ -229,33 +305,82 @@ class ActorCritic_Agent(object):
 
             # Reward Prediction loss
             # Skewed-Sampling from experience buffer # TODO
-            skewed_samples = self.memory.skewed_sample(self.args.batch_size)
-            skewed_batch = ReplayFrame(*zip(*skewed_samples))
-            batch_rp_input = []
-            batch_rp_output = []
+            # print('rew pred')
+            if self.model.reward_predictor is not None:
+                skewed_samples = self.memory.skewed_sample(
+                    self.args.batch_size)
+                skewed_batch = ReplayFrame(*zip(*skewed_samples))
+                batch_rp_input = []
+                batch_rp_output = []
 
-            for i in range(0, len(skewed_samples),
-                           self.memory.num_frame_rp + 1):
-                rp_input = skewed_batch.state[i: i + self.memory.num_frame_rp]
-                rp_output = skewed_batch.reward[i + self.memory.num_frame_rp]
+                for i in range(0, len(skewed_samples),
+                               self.memory.num_frame_rp + 1):
+                    rp_input = skewed_batch.state[
+                        i: i + self.memory.num_frame_rp
+                    ]
+                    rp_output = skewed_batch.reward[
+                        i + self.memory.num_frame_rp
+                    ]
 
-                batch_rp_input.append(rp_input)
-                batch_rp_output.append(rp_output)
+                    batch_rp_input.append(rp_input)
+                    batch_rp_output.append(rp_output)
 
-            rp_predicted = self.model.reward_predictor(batch_rp_input)
-            batch_rp_output = torch.from_numpy(
-                np.array(batch_rp_output)).type_as(rp_predicted.data)
-            reward_prediction_loss = torch.sum(
-                (rp_predicted - Variable(batch_rp_output)).pow(2))
+                rp_predicted = self.model.reward_predictor(batch_rp_input)
+                batch_rp_output = torch.from_numpy(
+                    np.array(batch_rp_output)).type_as(rp_predicted.data)
+                reward_prediction_loss = torch.sum(
+                    (rp_predicted - Variable(batch_rp_output)).pow(2))
 
             # Language Prediction Loss
-            # TODO #
+            # Positive Skewed Sampled from Experience replay
+            # print('lang pred')
+            if self.model.language_predictor is not None and(
+                self.target_keywords is not None and (
+                    len(self.target_keywords) > 0)):
+                auxiliary_pskew_samples = self.memory.positive_skewed_sample(
+                    self.args.batch_size, 0)
+                if len(auxiliary_pskew_samples) > 0:
+                    auxiliary_pskew_batch = ReplayFrame(
+                        *zip(*auxiliary_pskew_samples))
 
+                    state_pskew_input = auxiliary_pskew_batch.state
+                    visual_pskew_input = torch.cat(
+                        [t.image for t in state_pskew_input], 0)
+                    visual_pskew_target = [
+                        self.identify_lp_target_keywords(
+                            t.mission) for t in state_pskew_input
+                    ]
+
+                    lp_out = self.model.language_predictor(visual_pskew_input)
+                    lp_out_softmax = F.log_softmax(lp_out, dim=1)
+
+                    for i in range(lp_out_softmax.size(0)):
+                        elt_loss = 0
+                        for k in range(len(visual_pskew_target[i])):
+                            elt_loss = elt_loss + F.nll_loss(
+                                lp_out_softmax[i, :].unsqueeze(0),
+                                Variable(
+                                    torch.Tensor(
+                                        [visual_pskew_target[i][k]]
+                                    ).type_as(
+                                        state_pskew_input[0].mission.data
+                                    )
+                                ),
+                                self.lpweight
+                            )
+                        elt_loss = elt_loss / max(
+                            len(visual_pskew_target[i]), 1)
+
+                        language_prediction_loss += elt_loss
+
+                    language_prediction_loss /= lp_out_softmax.size(0)
+
+        # print('optim')
         self.optimizer.zero_grad()
 
         # Back-propagation
         total_loss = (policy_loss + self.args.value_loss_coef * value_loss +
-                      reward_prediction_loss + tae_loss +
+                      reward_prediction_loss + tae_loss + vtc_loss +
                       language_prediction_loss + value_replay_loss)
 
         # print('total_loss: ', total_loss)
@@ -275,7 +400,7 @@ class ActorCritic_Agent(object):
         updatecount = 0
         updateprintcount = 0
 
-        chekoutindex = 1
+        chekoutindex = int(step / self.checkpoint_every) + 1  # 1
 
         self.model.train()
 
@@ -291,6 +416,8 @@ class ActorCritic_Agent(object):
         state = self.env.reset()
         state = self.process_state(state)
         self.model.reset_hidden_states()
+        if not (self.memory is None):
+            self.memory.reset_rp_frame_index()
 
         prev_terminal_end = False
         print_loss_log = False
@@ -335,6 +462,11 @@ class ActorCritic_Agent(object):
 
                 # Perform the action on the environment
                 nextstate, reward, done, _ = self.env.step(action)
+                vtcInd = 0
+                if not self.vtcFuncInd is None:
+                    img = nextstate if not isinstance(
+                        nextstate, dict) else nextstate['image']
+                    vtcInd = int(self.vtcFuncInd(self.env, img))
                 next_state = self.process_state(nextstate)
                 reward = self.process_reward(reward)
 
@@ -351,12 +483,12 @@ class ActorCritic_Agent(object):
                 log_probs.append(select_action_log_proba)
 
                 # Save in Memory if necessary
-                frame = ReplayFrame(
-                    state,
-                    Variable(logit.data.clone()), next_state, reward,
-                    Variable(value.data.clone()), done
-                )
                 if not (self.memory is None):
+                    frame = ReplayFrame(
+                        state,
+                        Variable(logit.data.clone()), next_state, reward,
+                        Variable(value.data.clone()), done, vtcInd
+                    )
                     self.memory.push(frame)
 
                 if done:
@@ -364,6 +496,8 @@ class ActorCritic_Agent(object):
                     state = self.env.reset()
                     state = self.process_state(state)
                     self.model.reset_hidden_states()
+                    if not (self.memory is None):
+                        self.memory.reset_rp_frame_index()
 
                     break
                 else:
@@ -379,7 +513,8 @@ class ActorCritic_Agent(object):
             values.append(Variable(R))
 
             if sum(rewards) > 0:
-                print('SUCCESS Reward Optim')
+                print('SUCCESS Reward Optim: ', sum(rewards),
+                      ' - ', current_episode)
 
             runningReward = runningReward * 0.99 + sum(rewards) * 0.01
 
@@ -431,7 +566,7 @@ class ActorCritic_Agent(object):
                 self.optimizer.update(epoch_loss_avg, current_episode)
 
             # Checkpoint
-            if step >= chekoutindex * self.checkpoint_every or step == max_iters:
+            if step >= chekoutindex * self.checkpoint_every or step >= max_iters:
                 Checkpoint(
                     model=self.model,
                     optimizer=self.optimizer,
@@ -484,6 +619,12 @@ class ActorCritic_Agent(object):
         self.model.eval()
 
         state = self.env.reset()
+        if isinstance(state, dict) and 'mission' in state:
+            mission = state['mission']
+        else:
+            mission = ''
+        if not (mission == ''):
+            print(mission)
         state = self.process_state(state)
         self.model.reset_hidden_states()
 
@@ -527,11 +668,18 @@ class ActorCritic_Agent(object):
                         step / (time.time() - start_time),
                         reward_sum,
                         episode_length
-                    )
+                    ), ' ', mission
                 )
                 reward_sum = 0
                 episode_length = 0
                 state = self.env.reset()
+                if isinstance(state, dict) and 'mission' in state:
+                    mission = state['mission']
+                else:
+                    mission = ''
+
+                if not (mission == ''):
+                    print(mission)
                 state = self.process_state(state)
                 self.model.reset_hidden_states()
                 time.sleep(1)
