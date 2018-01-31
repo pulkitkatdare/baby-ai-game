@@ -111,7 +111,11 @@ def main():
 
     rollouts = RolloutStorage(args.num_steps, args.num_processes, obs_shape, envs.action_space, actor_critic.state_size)
     current_obs = torch.zeros(args.num_processes, *obs_shape)
-
+    
+    
+    
+    
+    
     def update_current_obs(obs):
         global text
         #print('top')
