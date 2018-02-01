@@ -36,9 +36,6 @@ class Model(nn.Module):
         # Reshape the input so that it is one-dimensional
         inputs = inputs.view(-1, self.num_inputs)
 
-        # Rescale observation values in [0,1]
-        inputs = inputs / self.obs_high
-
         # Don't put a relu on the last layer, because we want to avoid
         # zero probabilities
         x = F.relu(self.a_fc1(inputs))
@@ -54,20 +51,24 @@ class Model(nn.Module):
         obs = torch.from_numpy(obs).float().unsqueeze(0)
         action_probs, state_value = self(Variable(obs))
 
-        # print(
-        #     'action_probs: ',
-        #     action_probs.volatile,
-        #     'state_value: ',
-        #     state_value.volatile)
-
-        # print(action_probs)
-
         dist = Categorical(action_probs)
         action = dist.sample()
-
-        #model.saved_actions.append(SavedAction(m.log_prob(action), state_value))
+        #log_prob = dist.log_prob(action)
 
         return action.data[0]
+
+    def action_log_prob(self, obs, action):
+
+        obs = torch.from_numpy(obs).float().unsqueeze(0)
+        action_probs, state_value = self(Variable(obs))
+        dist = Categorical(action_probs)
+
+        action = Variable(torch.LongTensor(1).fill_(action))
+        #print(action)
+
+        log_prob = dist.log_prob(action)
+
+        return log_prob
 
 class Rollout:
     def __init__(self):
@@ -103,23 +104,48 @@ def random_rollout(env):
     num_episodes += 1
     return rollout
 
+def cross_entropy(yHat, y):
+    if yHat == 1:
+      return -log(y)
+    else:
+      return -log(1 - y)
+
 def train_model(model, rollout):
 
-    pass
+    losses = []
 
+    for step in range(0, len(rollout.obs)):
+        rollout_action = rollout.action[step]
+        #model_action = model.select_action(rollout.obs[step])
+        #print(model_action)
 
+        log_prob = model.action_log_prob(rollout.obs[step], rollout_action)
 
+        #print(-log_prob)
 
-#    optimizer.zero_grad()
-#    loss = torch.cat(policy_losses).sum() + torch.cat(value_losses).sum()
-#    loss.backward()
-#    optimizer.step()
+        losses.append(-log_prob)
 
+    optimizer.zero_grad()
+    loss = torch.cat(losses).sum()
 
+    print(loss)
 
+    loss.backward()
+    optimizer.step()
 
+def eval_model(model, env, num_evals=64):
+    sum_reward = 0
+    obs = env.reset()
 
+    for n in range(0, num_evals):
+        while True:
+            action = model.select_action(obs)
+            obs, reward, done, info = env.step(action)
+            sum_reward += reward
+            if done:
+                break
 
+    return sum_reward / num_evals
 
 env = gym.make('MiniGrid-Empty-6x6-v0')
 #env = gym.make('MiniGrid-DoorKey-5x5-v0')
@@ -142,3 +168,17 @@ while True:
     if rollout.total_reward > 0:
         print('success: reward=%s, length=%s' % (rollout.total_reward, len(rollout.obs)))
         success_rollouts.append(rollout)
+
+    if len(success_rollouts) > 0:
+        #rollout = random.choice(success_rollouts)
+
+        best_rollout = None
+        for r in success_rollouts:
+            if not best_rollout or len(r.obs) < len(best_rollout.obs):
+                best_rollout = r
+
+        train_model(model, best_rollout)
+        r = eval_model(model, env)
+        #print(len(success_rollouts))
+        print(len(best_rollout.obs))
+        print(r)
