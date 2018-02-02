@@ -23,8 +23,9 @@ class Model(nn.Module):
         self.num_inputs = reduce(operator.mul, input_size, 1)
         self.num_actions = num_actions
 
-        self.fc1 = nn.Linear(self.num_inputs, 8)
-        self.fc3 = nn.Linear(8, num_actions)
+        self.fc1 = nn.Linear(self.num_inputs, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, num_actions)
 
         self.optimizer = optim.SGD(
             self.parameters(),
@@ -42,6 +43,7 @@ class Model(nn.Module):
         image = image.view(-1, self.num_inputs)
 
         x = F.relu(self.fc1(image))
+        x = F.relu(self.fc2(x))
         action_scores = self.fc3(x)
         action_probs = F.softmax(action_scores, dim=1)
 
@@ -72,33 +74,66 @@ class Rollout:
         self.obs = []
         self.action = []
         self.reward = []
+        self.length = 0
         self.total_reward = 0
 
-def random_rollout(env):
-    global num_steps
-    global num_episodes
+    def append(self, obs, action, reward):
+        self.obs.append(obs)
+        self.action.append(int(action))
+        self.reward.append(reward)
+        self.length += 1
+        self.total_reward += reward
 
+def random_rollout(env, seed):
+    env.seed(seed)
     obs = env.reset()
 
-    rollout = Rollout()
-
     while True:
-
         action = random.randint(0, env.action_space.n - 1)
+        newObs, reward, done, info = env.step(action)
 
-        rollout.obs.append(obs)
-        rollout.action.append(action)
-
-        obs, reward, done, info = env.step(action)
-        num_steps += 1
-
-        rollout.reward.append(reward)
-        rollout.total_reward += reward
+        rollout.append(obs, action, reward)
+        obs = newObs
 
         if done:
             break
 
-    num_episodes += 1
+    return rollout
+
+def equiv_rollout(env, r1):
+    num_trials = 0
+
+    while True:
+        r2 = random_rollout(env, r1.seed)
+        num_trials += 1
+
+        print(num_trials)
+
+        if len(r2.obs) <= len(r1.obs):
+            return r2
+
+def run_model(model, env, seed, eps):
+    env.seed(seed)
+    obs = env.reset()
+    rollout = Rollout(seed)
+
+    while True:
+        if not isinstance(obs, dict):
+            obs = { 'image': obs, 'mission': '' }
+
+        if random.random() < eps:
+            action = random.randint(0, env.action_space.n - 1)
+        else:
+            action = model.select_action(obs)
+
+        newObs, reward, done, info = env.step(action)
+
+        rollout.append(obs, action, reward)
+        obs = newObs
+
+        if done:
+            break
+
     return rollout
 
 def cross_entropy(yHat, y):
@@ -108,18 +143,11 @@ def cross_entropy(yHat, y):
       return -log(1 - y)
 
 def train_model(model, rollout):
-
     losses = []
 
     for step in range(0, len(rollout.obs)):
         rollout_action = rollout.action[step]
-        #model_action = model.select_action(rollout.obs[step])
-        #print(model_action)
-
         log_prob = model.action_log_prob(rollout.obs[step], rollout_action)
-
-        #print(-log_prob)
-
         losses.append(-log_prob)
 
     model.optimizer.zero_grad()

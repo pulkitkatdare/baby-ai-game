@@ -15,7 +15,7 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor
 import gym
 import gym_minigrid
 
-from model.training import Model, Rollout, train_model, eval_model
+from model.training import Model, Rollout, train_model, eval_model, run_model
 
 class AIGameWindow(QMainWindow):
     """Application window for the baby AI game"""
@@ -208,18 +208,14 @@ class AIGameWindow(QMainWindow):
         if value == 0:
             self.fpsLabel.setText("Manual")
             self.stepTimer.stop()
-
-            self.rollout = Rollout()
-            self.resetEnv()
         else:
             value = 5
             self.fpsLabel.setText("%s FPS" % value)
             self.stepTimer.setInterval(int(1000 / value))
             self.stepTimer.start()
 
-            self.rollout = None
-            self.resetEnv()
-
+        self.rollout = None
+        self.resetEnv()
         self.clearFocus()
 
     def resetBtn(self):
@@ -247,7 +243,7 @@ class AIGameWindow(QMainWindow):
 
         self.showEnv(obs)
 
-        if self.rollout and len(self.rollout.obs) > 0:
+        if self.rollout and self.rollout.total_reward > 0:
             self.rollouts.append(self.rollout)
             print('num rollouts: %d' % len(self.rollouts))
 
@@ -265,6 +261,29 @@ class AIGameWindow(QMainWindow):
             for r in self.rollouts:
                 total_loss += train_model(self.model, r)
             print(total_loss / len(self.rollouts))
+
+        if len(self.rollouts) < 3:
+            return
+
+        seed = random.randint(0, 0xFFFFFFFF)
+        best_rollout = Rollout(0)
+        num_success = 0
+
+        for j in range(0, 100):
+            rollout = run_model(self.model, self.env, seed, eps=0)
+
+            if rollout.total_reward > best_rollout.total_reward:
+                best_rollout = rollout
+                num_success += 1
+
+        print('num success: %d' % num_success)
+
+        if best_rollout.total_reward > 0:
+            self.rollouts.append(best_rollout)
+
+        print('num rollouts: %d' % len(self.rollouts))
+
+        self.resetEnv()
 
     def showEnv(self, obs):
         unwrapped = self.env.unwrapped
@@ -300,9 +319,7 @@ class AIGameWindow(QMainWindow):
         obs, reward, done, info = self.env.step(action)
 
         if self.rollout:
-            self.rollout.obs.append(self.lastObs)
-            self.rollout.action.append(action)
-            self.rollout.reward.append(reward)
+            self.rollout.append(self.lastObs, action, reward)
             print('action=%s, reward=%s' % (action, reward))
 
         if not isinstance(obs, dict):
