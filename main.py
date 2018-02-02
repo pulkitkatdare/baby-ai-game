@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import random
 import time
 import sys
 import threading
@@ -30,8 +31,8 @@ class AIGameWindow(QMainWindow):
         self.lastObs = None
 
         self.model = model
-        self.rollout = Rollout()
         self.rollouts = []
+        self.rollout = None
 
         self.stepTimer = QTimer()
         self.stepTimer.setInterval(0)
@@ -91,15 +92,15 @@ class AIGameWindow(QMainWindow):
         self.stepsLabel.setAlignment(Qt.AlignCenter)
         self.stepsLabel.setMinimumSize(60, 10)
         resetBtn = QPushButton("Reset")
-        resetBtn.clicked.connect(self.resetEnv)
-        seedBtn = QPushButton("Seed")
-        seedBtn.clicked.connect(self.reseedEnv)
+        resetBtn.clicked.connect(self.resetBtn)
+        trainBtn = QPushButton("Train")
+        trainBtn.clicked.connect(self.train)
         stepsBox = QHBoxLayout()
         stepsBox.addStretch(1)
         stepsBox.addWidget(QLabel("Steps remaining"))
         stepsBox.addWidget(self.stepsLabel)
         stepsBox.addWidget(resetBtn)
-        stepsBox.addWidget(seedBtn)
+        stepsBox.addWidget(trainBtn)
         stepsBox.addStretch(1)
 
         hline2 = QFrame()
@@ -166,9 +167,12 @@ class AIGameWindow(QMainWindow):
             self.stepEnv(actions.toggle)
 
     def mousePressEvent(self, event):
+        self.clearFocus()
+        QMainWindow.mousePressEvent(self, event)
+
+    def clearFocus(self):
         """
-        Clear the focus of the text boxes and buttons if somewhere
-        else on the window is clicked
+        Clear the focus of the text boxes and buttons
         """
 
         # Get the object currently in focus
@@ -176,8 +180,6 @@ class AIGameWindow(QMainWindow):
 
         if isinstance(focused, (QPushButton, QTextEdit)):
             focused.clearFocus()
-
-        QMainWindow.mousePressEvent(self, event)
 
     def missionEdit(self):
         # The agent will get the mission as an observation
@@ -218,7 +220,16 @@ class AIGameWindow(QMainWindow):
             self.rollout = None
             self.resetEnv()
 
+        self.clearFocus()
+
+    def resetBtn(self):
+        self.clearFocus()
+        self.resetEnv()
+
     def resetEnv(self):
+        seed = random.randint(0, 0xFFFFFFFF)
+
+        self.env.seed(seed)
         obs = self.env.reset()
 
         if not isinstance(obs, dict):
@@ -237,22 +248,23 @@ class AIGameWindow(QMainWindow):
         self.showEnv(obs)
 
         if self.rollout and len(self.rollout.obs) > 0:
+            self.rollouts.append(self.rollout)
             print('num rollouts: %d' % len(self.rollouts))
 
-            self.rollouts.append(self.rollout)
-            self.rollout = Rollout()
-
-            for i in range(0, 100):
-                total_loss = 0
-                for r in self.rollouts:
-                    total_loss += train_model(self.model, r)
-                print(total_loss / len(self.rollouts))
+        self.rollout = Rollout(seed)
 
     def reseedEnv(self):
         import random
         seed = random.randint(0, 0xFFFFFFFF)
         self.env.seed(seed)
         self.resetEnv()
+
+    def train(self):
+        for i in range(0, 100):
+            total_loss = 0
+            for r in self.rollouts:
+                total_loss += train_model(self.model, r)
+            print(total_loss / len(self.rollouts))
 
     def showEnv(self, obs):
         unwrapped = self.env.unwrapped

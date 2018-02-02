@@ -23,11 +23,8 @@ class Model(nn.Module):
         self.num_inputs = reduce(operator.mul, input_size, 1)
         self.num_actions = num_actions
 
-        self.a_fc1 = nn.Linear(self.num_inputs, 64)
-        self.a_fc2 = nn.Linear(64, 64)
-
-        self.a_fc3 = nn.Linear(64, num_actions)
-        self.v_fc3 = nn.Linear(64, 1)
+        self.fc1 = nn.Linear(self.num_inputs, 8)
+        self.fc3 = nn.Linear(8, num_actions)
 
         self.optimizer = optim.SGD(
             self.parameters(),
@@ -44,9 +41,8 @@ class Model(nn.Module):
         # Reshape the input so that it is one-dimensional
         image = image.view(-1, self.num_inputs)
 
-        x = F.relu(self.a_fc1(image))
-        x = F.relu(self.a_fc2(x))
-        action_scores = self.a_fc3(x)
+        x = F.relu(self.fc1(image))
+        action_scores = self.fc3(x)
         action_probs = F.softmax(action_scores, dim=1)
 
         return action_probs
@@ -71,7 +67,8 @@ class Model(nn.Module):
         return log_prob
 
 class Rollout:
-    def __init__(self):
+    def __init__(self, seed):
+        self.seed = seed
         self.obs = []
         self.action = []
         self.reward = []
