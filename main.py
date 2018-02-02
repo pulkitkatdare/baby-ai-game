@@ -14,12 +14,12 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor
 import gym
 import gym_minigrid
 
-from model.training import selectAction
+from model.training import Model, Rollout, train_model, eval_model
 
 class AIGameWindow(QMainWindow):
     """Application window for the baby AI game"""
 
-    def __init__(self, env):
+    def __init__(self, env, model):
         super().__init__()
         self.initUI()
 
@@ -29,12 +29,16 @@ class AIGameWindow(QMainWindow):
         self.env = env
         self.lastObs = None
 
-        self.resetEnv()
+        self.model = model
+        self.rollout = Rollout()
+        self.rollouts = []
 
         self.stepTimer = QTimer()
         self.stepTimer.setInterval(0)
         self.stepTimer.setSingleShot(False)
         self.stepTimer.timeout.connect(self.stepClicked)
+
+        self.resetEnv()
 
     def initUI(self):
         """Create and connect the UI elements"""
@@ -195,7 +199,7 @@ class AIGameWindow(QMainWindow):
     def setFrameRate(self, value):
         """Set the frame rate limit. Zero for manual stepping."""
 
-        print('Set frame rate: %s' % value)
+        #print('Set frame rate: %s' % value)
 
         self.fpsLimit = int(value)
 
@@ -203,15 +207,16 @@ class AIGameWindow(QMainWindow):
             self.fpsLabel.setText("Manual")
             self.stepTimer.stop()
 
-        elif value == 100:
-            self.fpsLabel.setText("Fastest")
-            self.stepTimer.setInterval(0)
+            self.rollout = Rollout()
+            self.resetEnv()
+        else:
+            value = 5
+            self.fpsLabel.setText("%s FPS" % value)
+            self.stepTimer.setInterval(int(1000 / value))
             self.stepTimer.start()
 
-        else:
-            self.fpsLabel.setText("%s FPS" % value)
-            self.stepTimer.setInterval(int(1000 / self.fpsLimit))
-            self.stepTimer.start()
+            self.rollout = None
+            self.resetEnv()
 
     def resetEnv(self):
         obs = self.env.reset()
@@ -230,6 +235,18 @@ class AIGameWindow(QMainWindow):
         self.missionBox.setPlainText(mission)
 
         self.showEnv(obs)
+
+        if self.rollout and len(self.rollout.obs) > 0:
+            print('num rollouts: %d' % len(self.rollouts))
+
+            self.rollouts.append(self.rollout)
+            self.rollout = Rollout()
+
+            for i in range(0, 100):
+                total_loss = 0
+                for r in self.rollouts:
+                    total_loss += train_model(self.model, r)
+                print(total_loss / len(self.rollouts))
 
     def reseedEnv(self):
         import random
@@ -266,9 +283,15 @@ class AIGameWindow(QMainWindow):
 
         # If no manual action was specified by the user
         if action == None:
-            action = selectAction(self.lastObs)
+            action = self.model.select_action(self.lastObs)
 
         obs, reward, done, info = self.env.step(action)
+
+        if self.rollout:
+            self.rollout.obs.append(self.lastObs)
+            self.rollout.action.append(action)
+            self.rollout.reward.append(reward)
+            print('action=%s, reward=%s' % (action, reward))
 
         if not isinstance(obs, dict):
             obs = { 'image': obs, 'mission': '' }
@@ -299,16 +322,21 @@ def main(argv):
     parser.add_option(
         "--env-name",
         help="gym environment to load",
-        default='MiniGrid-MultiRoom-N6-v0'
+        default='MiniGrid-DoorKey-8x8-v0'
     )
     (options, args) = parser.parse_args()
 
     # Load the gym environment
     env = gym.make(options.env_name)
 
+    model = Model(
+        env.observation_space.shape,
+        env.action_space.n
+    )
+
     # Create the application window
     app = QApplication(sys.argv)
-    window = AIGameWindow(env)
+    window = AIGameWindow(env, model)
 
     # Run the application
     sys.exit(app.exec_())
