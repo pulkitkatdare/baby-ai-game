@@ -25,14 +25,10 @@ def make_env(env_id, seed, rank, log_dir):
         if isinstance(env.observation_space, spaces.Dict):
             env = FlatObsWrapper(env)
 
-        # If the input has shape (W,H,3), wrap for PyTorch convolutions
-        obs_shape = env.observation_space.shape
-        if len(obs_shape) == 3 and obs_shape[2] == 3:
-            env = WrapPyTorch(env)
-
         return env
 
     return _thunk
+<<<<<<< HEAD
 
 class WrapPyTorch(gym.ObservationWrapper):
     def __init__(self, env=None):
@@ -53,3 +49,5 @@ class WrapPyTorch(gym.ObservationWrapper):
     
     
     
+=======
+>>>>>>> b93350fa62cde03fdf33b6f7dbe74516a9afce2c
