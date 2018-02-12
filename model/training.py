@@ -1,21 +1,133 @@
-from collections import namedtuple, deque
-from torch.autograd import Variable
+#!/usr/bin/env python3
+
+import time
+import random
+import numpy as np
+import operator
+from functools import reduce
+
+import gym
+import gym_minigrid
+
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.autograd import Variable
+from torch.distributions import Categorical
 
-def selectAction(obs):
-    """
-    Select the next action to be performed in an episode
-    @state tuple containing (image, mission, advice)
-    """
+class Model(nn.Module):
+    def __init__(self, input_size, num_actions):
+        super().__init__()
 
-    # TODO
-    print('selectAction: implement me!')
+        self.num_inputs = reduce(operator.mul, input_size, 1)
+        self.num_actions = num_actions
 
-    image = obs['image']
-    mission = obs['mission']
+        self.fc1 = nn.Linear(self.num_inputs, 64)
+        self.fc2 = nn.Linear(64, 64)
+        self.fc3 = nn.Linear(64, num_actions)
 
-    print('image: %s' % str(image.shape))
-    print('mission: %s' % mission)
+        self.optimizer = optim.SGD(
+            self.parameters(),
+            lr=0.0005,
+            momentum=0.4
+        )
 
-    import random
-    return random.randint(0, 3)
+    def forward(self, obs):
+        image = obs['image']
+
+        # FIXME: what's the unsqueeze for?
+        image = Variable(torch.from_numpy(image).float().unsqueeze(0))
+
+        # Reshape the input so that it is one-dimensional
+        image = image.view(-1, self.num_inputs)
+
+        x = F.relu(self.fc1(image))
+        x = F.relu(self.fc2(x))
+        action_scores = self.fc3(x)
+        action_probs = F.softmax(action_scores, dim=1)
+
+        return action_probs
+
+    def select_action(self, obs):
+        action_probs = self.forward(obs)
+
+        dist = Categorical(action_probs)
+        action = dist.sample()
+        #log_prob = dist.log_prob(action)
+
+        return action.data[0]
+
+
+
+
+
+
+
+
+
+
+
+def cross_entropy(yHat, y):
+    if yHat == 1:
+      return -log(y)
+    else:
+      return -log(1 - y)
+
+def train_model(model, rollout):
+    losses = []
+
+    for step in range(0, len(rollout.obs)):
+        rollout_action = rollout.action[step]
+        log_prob = model.action_log_prob(rollout.obs[step], rollout_action)
+        losses.append(-log_prob)
+
+    model.optimizer.zero_grad()
+    loss = torch.cat(losses).sum()
+
+    loss.backward()
+    model.optimizer.step()
+
+    return loss.cpu().data[0]
+
+
+
+
+
+def run_model(model, env, seed, eps):
+    env.seed(seed)
+    obs = env.reset()
+    rollout = Rollout(seed)
+
+    while True:
+        if not isinstance(obs, dict):
+            obs = { 'image': obs, 'mission': '' }
+
+        if random.random() < eps:
+            action = random.randint(0, env.action_space.n - 1)
+        else:
+            action = model.select_action(obs)
+
+        newObs, reward, done, info = env.step(action)
+
+        rollout.append(obs, action, reward)
+        obs = newObs
+
+        if done:
+            break
+
+    return rollout
+
+def eval_model(model, env, num_evals=64):
+    sum_reward = 0
+    obs = env.reset()
+
+    for n in range(0, num_evals):
+        while True:
+            action = model.select_action(obs)
+            obs, reward, done, info = env.step(action)
+            sum_reward += reward
+            if done:
+                break
+
+    return sum_reward / num_evals
