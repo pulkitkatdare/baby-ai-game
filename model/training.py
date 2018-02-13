@@ -17,15 +17,15 @@ from torch.autograd import Variable
 from torch.distributions import Categorical
 
 class Model(nn.Module):
-    def __init__(self, input_size, num_actions):
+    def __init__(self, input_size):
         super().__init__()
 
         self.num_inputs = reduce(operator.mul, input_size, 1)
-        self.num_actions = num_actions
 
+        # Two output classes (true/false)
         self.fc1 = nn.Linear(self.num_inputs, 64)
         self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, num_actions)
+        self.fc3 = nn.Linear(64, 2)
 
         self.optimizer = optim.SGD(
             self.parameters(),
@@ -33,46 +33,43 @@ class Model(nn.Module):
             momentum=0.4
         )
 
-    def forward(self, obs):
-        image = obs['image']
-
-        # FIXME: what's the unsqueeze for?
-        image = Variable(torch.from_numpy(image).float().unsqueeze(0))
-
+    def forward(self, image, string):
         # Reshape the input so that it is one-dimensional
+        #image = Variable(torch.from_numpy(image).float().unsqueeze(0))
+        image = Variable(torch.from_numpy(image).float())
         image = image.view(-1, self.num_inputs)
+
+        # TODO: process string with RNN
+
 
         x = F.relu(self.fc1(image))
         x = F.relu(self.fc2(x))
-        action_scores = self.fc3(x)
-        action_probs = F.softmax(action_scores, dim=1)
 
-        return action_probs
+        class_scores = self.fc3(x)
+        class_probs = F.softmax(class_scores, dim=1)
 
+        return class_probs
+
+    # TODO: implement fn to get boolean val?
+    #def predict(self, image, string):
+
+    """
     def select_action(self, obs):
         action_probs = self.forward(obs)
-
         dist = Categorical(action_probs)
         action = dist.sample()
         #log_prob = dist.log_prob(action)
 
         return action.data[0]
+    """
 
 
 
 
+# TODO: lookup torch.nn.CrossEntropyLoss()
 
 
 
-
-
-
-
-def cross_entropy(yHat, y):
-    if yHat == 1:
-      return -log(y)
-    else:
-      return -log(1 - y)
 
 def train_model(model, rollout):
     losses = []
@@ -89,45 +86,3 @@ def train_model(model, rollout):
     model.optimizer.step()
 
     return loss.cpu().data[0]
-
-
-
-
-
-def run_model(model, env, seed, eps):
-    env.seed(seed)
-    obs = env.reset()
-    rollout = Rollout(seed)
-
-    while True:
-        if not isinstance(obs, dict):
-            obs = { 'image': obs, 'mission': '' }
-
-        if random.random() < eps:
-            action = random.randint(0, env.action_space.n - 1)
-        else:
-            action = model.select_action(obs)
-
-        newObs, reward, done, info = env.step(action)
-
-        rollout.append(obs, action, reward)
-        obs = newObs
-
-        if done:
-            break
-
-    return rollout
-
-def eval_model(model, env, num_evals=64):
-    sum_reward = 0
-    obs = env.reset()
-
-    for n in range(0, num_evals):
-        while True:
-            action = model.select_action(obs)
-            obs, reward, done, info = env.step(action)
-            sum_reward += reward
-            if done:
-                break
-
-    return sum_reward / num_evals
