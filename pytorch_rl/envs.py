@@ -23,8 +23,9 @@ def make_env(env_id, seed, rank, log_dir):
 
         # Maxime: until RL code supports dict observations, squash observations into a flat vector
         if isinstance(env.observation_space, spaces.Dict):
+            print('dic state not supported. we use a Flat wrapper')
             env = FlatObsWrapper(env)
-
+        #env=WrapPyTorch(env)
         return env
 
     return _thunk
@@ -39,9 +40,9 @@ class WrapPyTorch(gym.ObservationWrapper):
             [obs_shape[2], obs_shape[1], obs_shape[0]]
         )
 
-    def _observation(self, observation):
-     
-        return [observation['image'].transpose(2, 0, 1),observation['advice']]
+    def observation(self, observation):
+        print('observation', observation)
+        return [observation['image'].transpose(2, 0, 1)]#,observation['advice']]
     
     #def _observation(self, observation):
         #return observation['image'].transpose(2, 0, 1)

@@ -128,6 +128,10 @@ def main():
         current_obs[:, -shape_dim0:] = images
 
     obs = envs.reset()
+    print('obs : ', obs)
+    obs=envs.step(np.ones((4)))
+    print('obs : ', obs)
+
     print(obs.shape)
     
     #envs.getText()

@@ -41,7 +41,7 @@ class Teacher(Wrapper):
         super(Teacher, self)._close()
         
         
-    def _reset(self, **kwargs):
+    def reset(self, **kwargs):
         """
         Called at the start of an episode
         """
@@ -57,7 +57,7 @@ class Teacher(Wrapper):
         return (obs)
 
     
-    def _step(self, action):
+    def step(self, action):
         """
         Called at every action
         """
