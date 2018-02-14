@@ -5,6 +5,7 @@ from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 class RolloutStorage(object):
     def __init__(self, num_steps, num_processes, obs_shape, action_space, state_size):
         self.observations = torch.zeros(num_steps + 1, num_processes, *obs_shape)
+        self.missions=[['' for j in range(num_processes)] for i in range(num_steps+1)]
         self.states = torch.zeros(num_steps + 1, num_processes, state_size)
         self.rewards = torch.zeros(num_steps, num_processes, 1)
         self.value_preds = torch.zeros(num_steps + 1, num_processes, 1)
@@ -29,8 +30,9 @@ class RolloutStorage(object):
         self.actions = self.actions.cuda()
         self.masks = self.masks.cuda()
 
-    def insert(self, step, current_obs, state, action, action_log_prob, value_pred, reward, mask):
+    def insert(self, step, current_obs, state, action, action_log_prob, value_pred, reward, mask,current_mission=''):
         self.observations[step + 1].copy_(current_obs)
+        self.missions[step + 1].copy_(current_mission)
         self.states[step + 1].copy_(state)
         self.actions[step].copy_(action)
         self.action_log_probs[step].copy_(action_log_prob)
@@ -39,6 +41,7 @@ class RolloutStorage(object):
         self.masks[step + 1].copy_(mask)
 
     def after_update(self):
+        self.observations[0].copy_(self.observations[-1])
         self.observations[0].copy_(self.observations[-1])
         self.states[0].copy_(self.states[-1])
         self.masks[0].copy_(self.masks[-1])
