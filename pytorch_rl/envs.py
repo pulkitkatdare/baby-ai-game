@@ -1,14 +1,16 @@
 import os
-import numpy
 import gym
 from gym import spaces
 
-try:
-    import gym_minigrid
-    import teacher
-    from gym_minigrid.wrappers import *
-except:
-    pass
+import sys
+directory=os.getcwd()
+directory=directory+'/gym_aigame/envs'
+if not directory in sys.path:
+    sys.path.insert(0,directory)
+print("adding directory path")
+import teacher
+import gym_minigrid
+
 
 def make_env(env_id, seed, rank, log_dir):
     def _thunk():

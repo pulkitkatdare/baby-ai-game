@@ -21,6 +21,7 @@ from kfac import KFACOptimizer
 from model import RecMLPPolicy, MLPPolicy, CNNPolicy
 from storage import RolloutStorage
 from visualize import visdom_plot
+import preProcess
 
 args = get_args()
 
@@ -122,24 +123,22 @@ def main():
         shape_dim0 = envs.observation_space.shape[0]
         #img,txt = torch.from_numpy(np.stack(obs[:,0])).float(),np.stack(obs[:,1])
 
-        images,text = torch.from_numpy(np.stack(obs[:,0])).float(),np.stack(obs[:,1])
+        images = torch.from_numpy(obs)
         if args.num_stack > 1:
             current_obs[:, :-shape_dim0] = current_obs[:, shape_dim0:]
         current_obs[:, -shape_dim0:] = images
 
     obs = envs.reset()
     #print('obs : ', obs)
-    print(len(obs))
-    print(obs[0])
+#    print(len(obs))
+#    print(obs[0])
     
-    obs=envs.step(np.ones((4)))
+    obs,reward,done,info=envs.step(np.ones((args.num_processes)))
+    obs=np.array([preProcess.preProcessImage(dico['image']) for dico in obs])
     print(len(obs[0]))
     print(obs)
-    
-    #print('obs : ', obs)
-    
-    print(obs.shape)
-    
+#    
+#    
     #envs.getText()
     #print(txt)
     update_current_obs(obs)
@@ -168,6 +167,8 @@ def main():
             # Obser reward and next obs
             #print('actions',cpu_actions)
             obs, reward, done, info = envs.step(cpu_actions)
+            obs=np.array([preProcess.preProcessImage(dico['image']) for dico in obs])
+
             reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
             episode_rewards += reward
 

@@ -75,7 +75,7 @@ class Teacher(Wrapper):
             "mission": advice,
         }        
 
-        print('best action ', self.bestActions)
+        #print('best action ', self.bestActions)
 
         return obs, reward, done, info
 
@@ -415,12 +415,12 @@ class Teacher(Wrapper):
             #print("advice generated : ",advice)
        
         
-        print("advice generated : ", advice)
+        #print("advice generated : ", advice)
         #info['advice'] = advice
 
         #advice=seq
 
-        print(" ")
+        #print(" ")
         return(subgoal,advice)
 
 

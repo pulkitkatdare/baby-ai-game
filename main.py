@@ -270,7 +270,7 @@ class AIGameWindow(QMainWindow):
             action = selectAction(self.lastObs)
 
         obs, reward, done, info = self.env.step(action)
-
+        print(obs)
         if not isinstance(obs, dict):
             obs = { 'image': obs, 'mission': '' }
 
@@ -305,6 +305,7 @@ def main(argv):
     (options, args) = parser.parse_args()
 
     # Load the gym environment
+    print('making env :',options.env_name)
     env = gym.make(options.env_name)
     env = teacher.Teacher(env)
 
