@@ -37,7 +37,7 @@ class Teacher(Wrapper):
         
         
         
-    def _close(self):
+    def close(self):
         super(Teacher, self)._close()
         
         
@@ -52,7 +52,7 @@ class Teacher(Wrapper):
         if not isinstance(obs, dict):
                 obs = { "image": obs, 'mission':'' }
             
-        obs['advice']=self.generateAdvice()[1]
+        obs['mission']=self.generateAdvice()[1]
         
         return (obs)
 
