@@ -306,11 +306,8 @@ def main(argv):
 
     # Load the gym environment
     env = gym.make(options.env_name)
-<<<<<<< Updated upstream
     env = teacher.Teacher(env)
-=======
-	env=teacher.Teacher(env)
->>>>>>> Stashed changes
+
     # Create the application window
     app = QApplication(sys.argv)
     window = AIGameWindow(env)

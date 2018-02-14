@@ -28,7 +28,6 @@ def make_env(env_id, seed, rank, log_dir):
         return env
 
     return _thunk
-<<<<<<< HEAD
 
 class WrapPyTorch(gym.ObservationWrapper):
     def __init__(self, env=None):
@@ -49,5 +48,3 @@ class WrapPyTorch(gym.ObservationWrapper):
     
     
     
-=======
->>>>>>> b93350fa62cde03fdf33b6f7dbe74516a9afce2c

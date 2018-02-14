@@ -133,12 +133,7 @@ def main():
     #envs.getText()
     #print(txt)
     update_current_obs(obs)
-<<<<<<< HEAD
-    print(current_obs.shape)
-    
 
-=======
->>>>>>> b93350fa62cde03fdf33b6f7dbe74516a9afce2c
     rollouts.observations[0].copy_(current_obs)
 
     # These variables are used to compute average rewards for all processes.
