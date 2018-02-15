@@ -100,6 +100,7 @@ class RolloutStorage(object):
         perm = torch.randperm(num_processes)
         for start_ind in range(0, num_processes, num_envs_per_batch):
             observations_batch = []
+            missions_batch=[]
             states_batch = []
             actions_batch = []
             return_batch = []
@@ -110,6 +111,7 @@ class RolloutStorage(object):
             for offset in range(num_envs_per_batch):
                 ind = perm[start_ind + offset]
                 observations_batch.append(self.observations[:-1, ind])
+                missions_batch.append(self.missions[:-1, ind])
                 states_batch.append(self.states[0:1, ind])
                 actions_batch.append(self.actions[:, ind])
                 return_batch.append(self.returns[:-1, ind])
@@ -118,6 +120,8 @@ class RolloutStorage(object):
                 adv_targ.append(advantages[:, ind])
 
             observations_batch = torch.cat(observations_batch, 0)
+            missions_batch = torch.cat(missions_batch, 0)
+
             states_batch = torch.cat(states_batch, 0)
             actions_batch = torch.cat(actions_batch, 0)
             return_batch = torch.cat(return_batch, 0)
@@ -125,5 +129,5 @@ class RolloutStorage(object):
             old_action_log_probs_batch = torch.cat(old_action_log_probs_batch, 0)
             adv_targ = torch.cat(adv_targ, 0)
 
-            yield observations_batch, states_batch, actions_batch, \
+            yield observations_batch, missions_batch, states_batch, actions_batch, \
                 return_batch, masks_batch, old_action_log_probs_batch, adv_targ
