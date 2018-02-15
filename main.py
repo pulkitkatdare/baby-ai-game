@@ -3,6 +3,8 @@
 import time
 import sys
 import threading
+import copy
+import random
 from optparse import OptionParser
 
 from PyQt5.QtCore import Qt, QTimer
@@ -13,6 +15,7 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor
 
 import gym
 import gym_minigrid
+from gym_minigrid import minigrid
 
 from model.training import selectAction
 
@@ -176,6 +179,8 @@ class AIGameWindow(QMainWindow):
         elif e.key() == Qt.Key_Space:
             self.stepEnv(actions.toggle)
 
+        elif e.key() == Qt.Key_Backspace:
+            self.resetEnv()
         elif e.key() == Qt.Key_Escape:
             self.close()
 
@@ -185,23 +190,27 @@ class AIGameWindow(QMainWindow):
         else on the window is clicked
         """
 
-        # Get the object currently in focus
-        focused = QApplication.focusWidget()
-
-        if isinstance(focused, (QPushButton, QTextEdit)):
-            focused.clearFocus()
+        # Set the focus on the full render image
+        self.imgLabel.setFocus()
 
         QMainWindow.mousePressEvent(self, event)
 
     def imageClick(self, x, y):
-        grid = self.env.unwrapped.grid
+        """
+        Pointing and naming logic
+        """
+
+        # Set the focus on the full render image
+        self.imgLabel.setFocus()
+
+        env = self.env.unwrapped
         imgW = self.imgLabel.size().width()
         imgH = self.imgLabel.size().height()
 
-        i = (grid.width * x) // imgW
-        j = (grid.height * y) // imgH
-        assert i < grid.width
-        assert j < grid.height
+        i = (env.grid.width * x) // imgW
+        j = (env.grid.height * y) // imgH
+        assert i < env.grid.width
+        assert j < env.grid.height
 
         print('grid clicked: i=%d, j=%d' % (i, j))
 
@@ -211,14 +220,65 @@ class AIGameWindow(QMainWindow):
         if not ok or len(desc) == 0:
             return
 
-        self.pointingData.append({
-            'desc': desc,
-            'grid': grid.copy(),
-            'pos': (i, j)
-        })
+        pointObj = env.grid.get(i, j)
+
+        if pointObj is None:
+            return
 
         print('description: "%s"' % desc)
-        print('num items: %d' % len(self.pointingData))
+        print('object: %s %s' % (pointObj.color, pointObj.type))
+
+        viewSz = minigrid.AGENT_VIEW_SIZE
+
+        NUM_TARGET = 50
+        numItrs = 0
+        numPos = 0
+        numNeg = 0
+
+        while (numPos < NUM_TARGET or numNeg < NUM_TARGET) and numItrs < 300:
+            env2 = copy.deepcopy(env)
+
+            # Randomly place the agent around the selected point
+            x, y = i, j
+            x += random.randint(-viewSz, viewSz)
+            y += random.randint(-viewSz, viewSz)
+            x = max(0, min(x, env2.grid.width - 1))
+            y = max(0, min(y, env2.grid.height - 1))
+            env2.agentPos = (x, y)
+            env2.agentDir = random.randint(0, 3)
+
+            # Don't want to place the agent on top of something
+            if env2.grid.get(*env2.agentPos) != None:
+                continue
+
+            agentSees = env2.agentSees(i, j)
+
+            obs, _, _, _ = env2.step(env2.actions.wait)
+            img = obs['image'] if isinstance(obs, dict) else obs
+            obsGrid = minigrid.Grid.decode(img)
+
+            datum = {
+                'desc': desc,
+                'img': img,
+                'pos': (i, j),
+                'present': agentSees
+            }
+
+            if agentSees and numPos < NUM_TARGET:
+                self.pointingData.append(datum)
+                numPos += 1
+
+            if not agentSees and numNeg < NUM_TARGET:
+                # Don't want identical object in mismatch examples
+                if (pointObj.color, pointObj.type) not in obsGrid:
+                    self.pointingData.append(datum)
+                    numNeg += 1
+
+            numItrs += 1
+
+        print('positive examples: %d' % numPos)
+        print('negative examples: %d' % numNeg)
+        print('total examples: %d' % len(self.pointingData))
 
     def missionEdit(self):
         # The agent will get the mission as an observation
