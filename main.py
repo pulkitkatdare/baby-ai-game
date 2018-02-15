@@ -17,7 +17,8 @@ import gym
 import gym_minigrid
 from gym_minigrid import minigrid
 
-from model.training import selectAction
+#from model.training import selectAction
+from model.training import Model
 
 class ImgWidget(QLabel):
     """

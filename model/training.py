@@ -27,9 +27,11 @@ class Model(nn.Module):
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, 2)
 
+        self.lossFn = nn.CrossEntropyLoss()
+
         self.optimizer = optim.SGD(
             self.parameters(),
-            lr=0.0005,
+            lr=0.001,
             momentum=0.4
         )
 
@@ -53,36 +55,41 @@ class Model(nn.Module):
     # TODO: implement fn to get boolean val?
     #def predict(self, image, string):
 
-    """
-    def select_action(self, obs):
-        action_probs = self.forward(obs)
-        dist = Categorical(action_probs)
-        action = dist.sample()
-        #log_prob = dist.log_prob(action)
+    def train(image, string, labels):
+        """
+        Expects image, string and labels to be in tensor form
+        """
 
-        return action.data[0]
-    """
+        # TODO: need to sample batches from input data
+        # To begin with, can start with batch size 1
+
+        # wrap them in Variable
+        inputs, labels = Variable(inputs), Variable(labels)
+
+        # zero the parameter gradients
+        self.optimizer.zero_grad()
+
+        # forward + backward + optimize
+        outputs = self(inputs)
+        loss = self.lossFn(outputs, labels)
+        loss.backward()
+        self.optimizer.step()
+
+        return loss.cpu().data[0]
 
 
 
+def encodeStr(string, maxLen=64, numCharCodes=27):
+    string = string.lower()
 
-# TODO: lookup torch.nn.CrossEntropyLoss()
+    strArray = np.zeros(shape=(maxStrLen, numCharCodes), dtype='float32')
 
+    for idx, ch in enumerate(str):
+        if ch >= 'a' and ch <= 'z':
+            chNo = ord(ch) - ord('a')
+        elif ch == ' ':
+            chNo = ord('z') - ord('a') + 1
+        assert chNo < numCharCodes, '%s : %d' % (ch, chNo)
+        strArray[idx, chNo] = 1
 
-
-
-def train_model(model, rollout):
-    losses = []
-
-    for step in range(0, len(rollout.obs)):
-        rollout_action = rollout.action[step]
-        log_prob = model.action_log_prob(rollout.obs[step], rollout_action)
-        losses.append(-log_prob)
-
-    model.optimizer.zero_grad()
-    loss = torch.cat(losses).sum()
-
-    loss.backward()
-    model.optimizer.step()
-
-    return loss.cpu().data[0]
+    return strArray
