@@ -1,11 +1,15 @@
 import torch
 from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
-
+import preProcess
 
 class RolloutStorage(object):
     def __init__(self, num_steps, num_processes, obs_shape, action_space, state_size):
         self.observations = torch.zeros(num_steps + 1, num_processes, *obs_shape)
-        self.missions=[['' for j in range(num_processes)] for i in range(num_steps+1)]
+        
+        self.maxSizeOfMissions=200  
+        self.missions=torch.zeros(num_steps + 1, num_processes, self.maxSizeOfMissions)
+        
+        
         self.states = torch.zeros(num_steps + 1, num_processes, state_size)
         self.rewards = torch.zeros(num_steps, num_processes, 1)
         self.value_preds = torch.zeros(num_steps + 1, num_processes, 1)
@@ -22,6 +26,7 @@ class RolloutStorage(object):
 
     def cuda(self):
         self.observations = self.observations.cuda()
+        self.missios=self.missions.cuda()
         self.states = self.states.cuda()
         self.rewards = self.rewards.cuda()
         self.value_preds = self.value_preds.cuda()
@@ -30,7 +35,7 @@ class RolloutStorage(object):
         self.actions = self.actions.cuda()
         self.masks = self.masks.cuda()
 
-    def insert(self, step, current_obs, state, action, action_log_prob, value_pred, reward, mask,current_mission=''):
+    def insert(self, step, current_obs, state, action, action_log_prob, value_pred, reward, mask,current_mission=preProcess.stringEncoder('go to the goal')):
         self.observations[step + 1].copy_(current_obs)
         self.missions[step + 1].copy_(current_mission)
         self.states[step + 1].copy_(state)
@@ -42,7 +47,7 @@ class RolloutStorage(object):
 
     def after_update(self):
         self.observations[0].copy_(self.observations[-1])
-        self.observations[0].copy_(self.observations[-1])
+        self.missions[0].copy_(self.missions[-1])
         self.states[0].copy_(self.states[-1])
         self.masks[0].copy_(self.masks[-1])
 
@@ -74,6 +79,11 @@ class RolloutStorage(object):
 
             observations_batch = self.observations[:-1].view(-1,
                                         *self.observations.size()[2:])[indices]
+            
+            missions_batch = self.missions[:-1].view(-1,
+                                        *self.missions.size()[2:])[indices]
+            
+            
             states_batch = self.states[:-1].view(-1, self.states.size(-1))[indices]
             actions_batch = self.actions.view(-1, self.actions.size(-1))[indices]
             return_batch = self.returns[:-1].view(-1, 1)[indices]
@@ -81,7 +91,7 @@ class RolloutStorage(object):
             old_action_log_probs_batch = self.action_log_probs.view(-1, 1)[indices]
             adv_targ = advantages.view(-1, 1)[indices]
 
-            yield observations_batch, states_batch, actions_batch, \
+            yield observations_batch, missions_batch, states_batch, actions_batch, \
                 return_batch, masks_batch, old_action_log_probs_batch, adv_targ
 
     def recurrent_generator(self, advantages, num_mini_batch):

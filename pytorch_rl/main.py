@@ -247,7 +247,7 @@ def main():
                     data_generator = rollouts.feed_forward_generator(advantages, args.num_mini_batch)
 
                 for sample in data_generator:
-                    observations_batch, states_batch, actions_batch, \
+                    observations_batch, missions_batch, states_batch, actions_batch, \
                        return_batch, masks_batch, old_action_log_probs_batch, \
                             adv_targ = sample
 

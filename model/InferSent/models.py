@@ -155,7 +155,7 @@ class BLSTMEncoder(nn.Module):
                         len(self.word_vec), len(new_word_vec)))
 
     def get_batch(self, batch):
-        # sent in batch in decreasing order of lengths
+        # sent in batch in ecreasing order of lengths
         # batch: (bsize, max_len, word_dim)
         embed = np.zeros((len(batch[0]), len(batch), self.word_emb_dim))
 
