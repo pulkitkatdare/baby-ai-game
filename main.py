@@ -18,7 +18,7 @@ import gym_minigrid
 from gym_minigrid import minigrid
 
 #from model.training import selectAction
-from model.training import Model
+from model.training import *
 
 class ImgWidget(QLabel):
     """
@@ -53,6 +53,8 @@ class AIGameWindow(QMainWindow):
 
         # Pointing and naming data
         self.pointingData = []
+
+        self.model = Model()
 
     def initUI(self):
         """Create and connect the UI elements"""
@@ -280,6 +282,23 @@ class AIGameWindow(QMainWindow):
         print('positive examples: %d' % numPos)
         print('negative examples: %d' % numNeg)
         print('total examples: %d' % len(self.pointingData))
+
+
+
+
+        for i in range(0, 1000):
+
+            ex = random.choice(self.pointingData)
+
+            image = ex['img']
+            string = encodeStr(ex['desc'])
+            label = np.array([1] if ex['present'] else [0])
+
+            loss = self.model.train(image, string, label)
+
+            print(loss)
+
+
 
     def missionEdit(self):
         # The agent will get the mission as an observation
