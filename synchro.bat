@@ -1,0 +1,1 @@
+pscp sebbaghs@elisa2.iro.umontreal.ca:/data/milatmp1/sebbaghs/baby-ai-game/trained_models/a2c/MultiRoom-Teacher.pt C:\Users\simon\Desktop\MILA\baby-ai-game/trained_models/a2c/

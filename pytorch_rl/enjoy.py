@@ -18,9 +18,9 @@ parser.add_argument('--num-stack', type=int, default=1,
                     help='number of frames to stack (default: 1)')
 parser.add_argument('--log-interval', type=int, default=10,
                     help='log interval, one log per n updates (default: 10)')
-parser.add_argument('--env-name', default='PongNoFrameskip-v4',
+parser.add_argument('--env-name', default='MultiRoom-Teacher',
                     help='environment to train on (default: PongNoFrameskip-v4)')
-parser.add_argument('--load-dir', default='./trained_models/',
+parser.add_argument('--load-dir', default='./trained_models/a2c/',
                     help='directory to save agent logs (default: ./trained_models/)')
 args = parser.parse_args()
 
@@ -38,6 +38,7 @@ states = torch.zeros(1, actor_critic.state_size)
 masks = torch.zeros(1, 1)
 
 def update_current_obs(obs):
+    obs=obs[0]['image']
     shape_dim0 = env.observation_space.shape[0]
     obs = torch.from_numpy(obs).float()
     if args.num_stack > 1:
