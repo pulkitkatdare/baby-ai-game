@@ -3,11 +3,11 @@ from torch.utils.data.sampler import BatchSampler, SubsetRandomSampler
 import preProcess
 
 class RolloutStorage(object):
-    def __init__(self, num_steps, num_processes, obs_shape, action_space, state_size):
+    def __init__(self, num_steps, num_processes, obs_shape, action_space, state_size,maxSizeOfMissions=200):
         self.observations = torch.zeros(num_steps + 1, num_processes, *obs_shape)
         
-        self.maxSizeOfMissions=200  
-        self.missions=torch.zeros(num_steps + 1, num_processes, self.maxSizeOfMissions)
+        self.maxSizeOfMissions=maxSizeOfMissions
+        self.missions=torch.zeros(num_steps + 1, num_processes, maxSizeOfMissions)
         
         
         self.states = torch.zeros(num_steps + 1, num_processes, state_size)
@@ -23,6 +23,7 @@ class RolloutStorage(object):
         if action_space.__class__.__name__ == 'Discrete':
             self.actions = self.actions.long()
         self.masks = torch.ones(num_steps + 1, num_processes, 1)
+        self.num_processes=num_processes
 
     def cuda(self):
         self.observations = self.observations.cuda()
@@ -35,7 +36,7 @@ class RolloutStorage(object):
         self.actions = self.actions.cuda()
         self.masks = self.masks.cuda()
 
-    def insert(self, step, current_obs, state, action, action_log_prob, value_pred, reward, mask,current_mission=preProcess.stringEncoder('go to the goal')):
+    def insert(self, step, current_obs, current_mission,state, action, action_log_prob, value_pred, reward, mask):
         self.observations[step + 1].copy_(current_obs)
         self.missions[step + 1].copy_(current_mission)
         self.states[step + 1].copy_(state)

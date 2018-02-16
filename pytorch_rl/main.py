@@ -110,15 +110,15 @@ def main():
     elif args.algo == 'acktr':
         optimizer = KFACOptimizer(actor_critic)
 
-    rollouts = RolloutStorage(args.num_steps, args.num_processes, obs_shape, envs.action_space, actor_critic.state_size)
+    maxSizeOfMissionsSelected=200
+    rollouts = RolloutStorage(args.num_steps, args.num_processes, obs_shape, envs.action_space, actor_critic.state_size,maxSizeOfMissions=maxSizeOfMissionsSelected)
     current_obs = torch.zeros(args.num_processes, *obs_shape)
     
+    preProcessor=preProcess.PreProcessor()
+    current_missions=torch.zeros(args.num_processes, maxSizeOfMissionsSelected)
+
     
-    
-    
-    
-    def update_current_obs(obs):
-        global text
+    def update_current_obs(obs,missions):
         #print('top')
         shape_dim0 = envs.observation_space.shape[0]
         #img,txt = torch.from_numpy(np.stack(obs[:,0])).float(),np.stack(obs[:,1])
@@ -127,30 +127,41 @@ def main():
         if args.num_stack > 1:
             current_obs[:, :-shape_dim0] = current_obs[:, shape_dim0:]
         current_obs[:, -shape_dim0:] = images
+        current_missions = missions
 
     obs = envs.reset()
+#    print('init')
+#    print(obs)
+
     #print('obs : ', obs)
 #    print(len(obs))
 #    print(obs[0])
     
-    obs,reward,done,info=envs.step(np.ones((args.num_processes)))
-    obs=np.array([preProcess.preProcessImage(dico['image']) for dico in obs])
+    obsF,reward,done,info=envs.step(np.ones((args.num_processes)))
+    #print('after 1 step')
+    #print(obs)
+
+    obs=np.array([preProcessor.preProcessImage(dico['image']) for dico in obsF])
+    missions=torch.stack([preProcessor.stringEncoder(dico['mission']) for dico in obsF])
+    print(missions)
+    print('missions size',missions.size())
     print(len(obs[0]))
     print(obs)
 #    
 #    
     #envs.getText()
     #print(txt)
-    update_current_obs(obs)
+    update_current_obs(obs,missions)
 
     rollouts.observations[0].copy_(current_obs)
-
+    rollouts.missions[0].copy_(current_missions)
     # These variables are used to compute average rewards for all processes.
     episode_rewards = torch.zeros([args.num_processes, 1])
     final_rewards = torch.zeros([args.num_processes, 1])
 
     if args.cuda:
         current_obs = current_obs.cuda()
+        current_missions=current_missions.cuda()
         rollouts.cuda()
 
     start = time.time()
@@ -166,8 +177,10 @@ def main():
 
             # Obser reward and next obs
             #print('actions',cpu_actions)
-            obs, reward, done, info = envs.step(cpu_actions)
-            obs=np.array([preProcess.preProcessImage(dico['image']) for dico in obs])
+            obsF, reward, done, info = envs.step(cpu_actions)
+            obs=np.array([preProcessor.preProcessImage(dico['image']) for dico in obsF])
+            missions=torch.stack([preProcessor.stringEncoder(dico['mission']) for dico in obsF])
+
 
             reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
             episode_rewards += reward
@@ -185,8 +198,8 @@ def main():
                 current_obs *= masks.unsqueeze(2).unsqueeze(2)
             else:
                 current_obs *= masks
-            update_current_obs(obs)
-            rollouts.insert(step, current_obs, states.data, action.data, action_log_prob.data, value.data, reward, masks)
+            update_current_obs(obs,missions)
+            rollouts.insert(step, current_obs, current_missions, states.data, action.data, action_log_prob.data, value.data, reward, masks)
 
         next_value = actor_critic(
             Variable(rollouts.observations[-1], volatile=True),

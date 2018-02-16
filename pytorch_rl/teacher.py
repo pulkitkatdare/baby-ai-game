@@ -1,6 +1,5 @@
 import pickle
 import gym
-from gym import Wrapper
 import pickle
 import gym
 from gym import Wrapper
@@ -13,7 +12,7 @@ import os
 #    sys.path.insert(0,directory)
 #print("adding directory path")
 
-#from gym_minigrid.envs import shortestPath
+
 import shortestPath
 
 
@@ -34,14 +33,14 @@ class Teacher(Wrapper):
         
         
         self.bestActions=None
+        print('environment with Teacher created!')
         
         
-        
-    def _close(self):
+    def close(self):
         super(Teacher, self)._close()
         
         
-    def _reset(self, **kwargs):
+    def reset(self, **kwargs):
         """
         Called at the start of an episode
         """
@@ -52,40 +51,33 @@ class Teacher(Wrapper):
         if not isinstance(obs, dict):
                 obs = { "image": obs, 'mission':'' }
             
-        obs['advice']=self.generateAdvice()[1]
+        obs['mission']=self.generateAdvice()[1]
         
         return (obs)
 
     
-    def _step(self, action):
+    def step(self, action):
         """
         Called at every action
         """
         
-                        
         obs, reward, done, info = self.env.step(action)
-        
-        try:
-            #checking if the action selected corresponds to the best action
-            if action in self.bestActions:
-                reward+=1
-            else:
-                reward-=1
-        except:
-            print('best Actions,', self.bestActions)
-            print('action selected', action)
-        
-        
 
+        #print(self.bestActions)
+        if action in self.bestActions:
+            reward+=10
+        else:
+            reward-=10
         
-        self.advice=self.generateAdvice()[1]
+        
+        advice=self.generateAdvice()[1]
         
 
 
 
         obs = {
             "image": obs,
-            "advice": self.advice,
+            "mission": advice,
         }        
 
         #print('best action ', self.bestActions)
@@ -433,7 +425,7 @@ class Teacher(Wrapper):
 
         #advice=seq
 
-       # print(" ")
+        #print(" ")
         return(subgoal,advice)
 
 

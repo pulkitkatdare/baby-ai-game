@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, packages
 
 setup(
     name='baby_ai_game',

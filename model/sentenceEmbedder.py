@@ -10,7 +10,6 @@ import nltk
 import torch
 from torch.autograd import Variable
 
-
 import os
 directory=os.getcwd()
 if(not directory[-5:]=='model'):
