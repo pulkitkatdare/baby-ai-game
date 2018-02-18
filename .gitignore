@@ -4,7 +4,6 @@ model/InferSent/infersent.allnli.pickle
 model/InferSent/dataset
 trained_models/
 
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
