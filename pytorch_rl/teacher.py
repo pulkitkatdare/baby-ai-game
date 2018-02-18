@@ -58,7 +58,7 @@ class Teacher(Wrapper):
     
     def step(self, action):
         """
-        Called at every action
+        Called at every action, step
         """
         
         obs, reward, done, info = self.env.step(action)

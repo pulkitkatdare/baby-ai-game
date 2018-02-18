@@ -174,7 +174,6 @@ def main():
                 Variable(rollouts.masks[step], volatile=True)
             )
             cpu_actions = action.data.squeeze(1).cpu().numpy()
-
             # Obser reward and next obs
             #print('actions',cpu_actions)
             obsF, reward, done, info = envs.step(cpu_actions)
