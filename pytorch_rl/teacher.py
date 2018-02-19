@@ -67,7 +67,7 @@ class Teacher(Wrapper):
         if action in self.bestActions:
             reward+=1
         else:
-            reward-=100
+            reward-=1
         
         
         advice=self.generateAdvice()[1]

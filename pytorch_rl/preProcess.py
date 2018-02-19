@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import os,sys,inspect
 
 
 class PreProcessor(object):
@@ -7,6 +8,18 @@ class PreProcessor(object):
                  modelForSentenceEmbedding=False):
         
         self.modelForSentenceEmbedding=modelForSentenceEmbedding
+        
+        if self.modelForSentenceEmbedding:
+            print(sys.path[0])
+
+            currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+            parentdir = os.path.dirname(currentdir)+'\model'
+            sys.path.insert(0,parentdir) 
+            print(sys.path[0])
+            import sentenceEmbedder
+            self.languageModel=sentenceEmbedder.Sentence2Vec()
+            sys.path=sys.path[1:]            
+            print('language model loaded')
         
     def preProcessImage(self,img):
         '''

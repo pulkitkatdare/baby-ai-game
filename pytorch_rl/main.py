@@ -114,7 +114,7 @@ def main():
     rollouts = RolloutStorage(args.num_steps, args.num_processes, obs_shape, envs.action_space, actor_critic.state_size,maxSizeOfMissions=maxSizeOfMissionsSelected)
     current_obs = torch.zeros(args.num_processes, *obs_shape)
     
-    preProcessor=preProcess.PreProcessor()
+    preProcessor=preProcess.PreProcessor(modelForSentenceEmbedding=True)
     current_missions=torch.zeros(args.num_processes, maxSizeOfMissionsSelected)
 
     
@@ -177,6 +177,8 @@ def main():
             # Obser reward and next obs
             #print('actions',cpu_actions)
             obsF, reward, done, info = envs.step(cpu_actions)
+            
+            ## get the image and mission observation from the observation dictionnary
             obs=np.array([preProcessor.preProcessImage(dico['image']) for dico in obsF])
             missions=torch.stack([preProcessor.stringEncoder(dico['mission']) for dico in obsF])
 
@@ -197,6 +199,8 @@ def main():
                 current_obs *= masks.unsqueeze(2).unsqueeze(2)
             else:
                 current_obs *= masks
+                
+            #update current observation and save it in the storage memory
             update_current_obs(obs,missions)
             rollouts.insert(step, current_obs, current_missions, states.data, action.data, action_log_prob.data, value.data, reward, masks)
 
@@ -244,6 +248,7 @@ def main():
             optimizer.zero_grad()
             (value_loss * args.value_loss_coef + action_loss - dist_entropy * args.entropy_coef).backward()
 
+            ## CLIP THE GRADIENT 
             if args.algo == 'a2c':
                 nn.utils.clip_grad_norm(actor_critic.parameters(), args.max_grad_norm)
 
