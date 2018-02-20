@@ -82,6 +82,7 @@ def main():
 
     if len(obs_shape) == 3 and obs_numel > 1024:
         actor_critic = CNNPolicy(obs_shape[0], envs.action_space, args.recurrent_policy)
+        
     elif args.recurrent_policy:
         actor_critic = RecMLPPolicy(obs_numel, envs.action_space)
     else:
@@ -114,7 +115,7 @@ def main():
     rollouts = RolloutStorage(args.num_steps, args.num_processes, obs_shape, envs.action_space, actor_critic.state_size,maxSizeOfMissions=maxSizeOfMissionsSelected)
     current_obs = torch.zeros(args.num_processes, *obs_shape)
     
-    preProcessor=preProcess.PreProcessor(modelForSentenceEmbedding=True)
+    preProcessor=preProcess.PreProcessor()
     current_missions=torch.zeros(args.num_processes, maxSizeOfMissionsSelected)
 
     
@@ -143,10 +144,40 @@ def main():
 
     obs=np.array([preProcessor.preProcessImage(dico['image']) for dico in obsF])
     missions=torch.stack([preProcessor.stringEncoder(dico['mission']) for dico in obsF])
-    print(missions)
-    print('missions size',missions.size())
-    print(len(obs[0]))
-    print(obs)
+    #print(missions)
+    #print('missions size',missions.size())
+    #print(len(obs[0]))
+    #print(obs)
+    
+    
+    def getMissionsAsVariables(step,end=False):
+        '''
+        Allow to convert from list of ASCII codes to pytorch Variables
+        the argument step allows point-wise selection in the rollout
+        the argument end allows to access a whole part of the memory according to
+        missions[step:end]
+        '''
+        
+        #get the missions as ASCII codes
+        if end is not False:
+            tmpMissions=rollouts.missions[step:end].view(-1,200)
+            #convert them to pytorch tensors using the language model
+            tmpMissions=preProcessor.adaptToTorchVariable(tmpMissions)
+            #convert them as Variables
+            missionsVariable=Variable(tmpMissions)       
+        else:
+            tmpMissions=rollouts.missions[step]
+            #convert them to pytorch tensors using the language model
+            tmpMissions=preProcessor.adaptToTorchVariable(tmpMissions)
+            #convert them as Variables
+            missionsVariable=Variable(tmpMissions,volatile=True)
+       
+      
+        
+        #check if cuda is available
+        if args.cuda:
+            missionsVariable=missionsVariable.cuda()
+        return(missionsVariable)
 #    
 #    
     #envs.getText()
@@ -167,11 +198,16 @@ def main():
     start = time.time()
     for j in range(num_updates):
         for step in range(args.num_steps):
+            
+            #preprocess the missions to be used by the model
+            missionsVariable=getMissionsAsVariables(step)
+            
             # Sample actions
             value, action, action_log_prob, states = actor_critic.act(
                 Variable(rollouts.observations[step], volatile=True),
                 Variable(rollouts.states[step], volatile=True),
-                Variable(rollouts.masks[step], volatile=True)
+                Variable(rollouts.masks[step], volatile=True),
+                missions=missionsVariable
             )
             cpu_actions = action.data.squeeze(1).cpu().numpy()
             # Obser reward and next obs
@@ -199,25 +235,33 @@ def main():
                 current_obs *= masks.unsqueeze(2).unsqueeze(2)
             else:
                 current_obs *= masks
+            current_missions *= masks
+
                 
             #update current observation and save it in the storage memory
             update_current_obs(obs,missions)
             rollouts.insert(step, current_obs, current_missions, states.data, action.data, action_log_prob.data, value.data, reward, masks)
 
+        missionsVariable=getMissionsAsVariables(-1)
+        
         next_value = actor_critic(
             Variable(rollouts.observations[-1], volatile=True),
             Variable(rollouts.states[-1], volatile=True),
-            Variable(rollouts.masks[-1], volatile=True)
+            Variable(rollouts.masks[-1], volatile=True),
+            missions=missionsVariable
         )[0].data
 
         rollouts.compute_returns(next_value, args.use_gae, args.gamma, args.tau)
 
         if args.algo in ['a2c', 'acktr']:
+            
+            missionsVariable=getMissionsAsVariables(0,end=-1)
             values, action_log_probs, dist_entropy, states = actor_critic.evaluate_actions(
                 Variable(rollouts.observations[:-1].view(-1, *obs_shape)),
                 Variable(rollouts.states[:-1].view(-1, actor_critic.state_size)),
                 Variable(rollouts.masks[:-1].view(-1, 1)),
-                Variable(rollouts.actions.view(-1, action_shape))
+                Variable(rollouts.actions.view(-1, action_shape)),
+                missions=missionsVariable
             )
 
             values = values.view(args.num_steps, args.num_processes, 1)

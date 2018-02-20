@@ -5,12 +5,12 @@ Created on Wed Nov 22 18:27:57 2017
 @author: simon
 """
 import sys
-import traceback
 import nltk
 import torch
 from torch.autograd import Variable
+import os 
+import inspect
 
-import os
 directory=os.getcwd()
 if(not directory[-5:]=='model'):
     directory=directory+ '/model'
@@ -21,20 +21,28 @@ if(not directory[-5:]=='model'):
 
 class Sentence2Vec(object):
     def __init__(self,
-                 glove_path=directory+"/InferSent/dataset/GloVe/glove.840B.300d.txt",
+                 glove_pathRelative="/InferSent/dataset/GloVe/glove.840B.300d.txt",
                  useCuda=False,
                  Nwords=10000,
-                 pathToInferSentModel=directory+'/InferSent/infersent.allnli.pickle',
-                 modelDirectory=directory+"/InferSent"):
+                 pathToInferSentModelRelative='/InferSent/infersent.allnli.pickle',
+                 modelRelativeDirectory="/InferSent"):
+        
+        self.currentDir= os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+
+        self.glove_path=self.currentDir+glove_pathRelative
+        self.pathToInferSentModel=self.currentDir+pathToInferSentModelRelative
+        self.modelDirectory=self.currentDir+modelRelativeDirectory
+        
         print ("Loading Glove Model")
         
         
         #adding directory to the InferSent module
-        if (not modelDirectory in sys.path):
+        if (not self.modelDirectory in sys.path):
             print("adding local directory to load the model")
-            sys.path.append(modelDirectory)
+            sys.path.append(self.modelDirectory)
         else:
             print("directory already in the sys.path")
+        print(self.modelDirectory)
             
         
         nltk.download('punkt')        
@@ -42,14 +50,14 @@ class Sentence2Vec(object):
         #loading model
         if (useCuda):
             print("you are on GPU (encoding ~1000 sentences/s, default)")
-            self.infersent = torch.load(pathToInferSentModel)
+            self.infersent = torch.load(self.pathToInferSentModel)
         else: 
             print("you are on CPU (~40 sentences/s)")
-            self.infersent = torch.load(pathToInferSentModel, map_location=lambda storage, loc: storage)
+            self.infersent = torch.load(self.pathToInferSentModel, map_location=lambda storage, loc: storage)
         
         
         
-        self.infersent.set_glove_path(glove_path)
+        self.infersent.set_glove_path(self.glove_path)
         
         print("loading the {} most common words".format(Nwords))
         try: 

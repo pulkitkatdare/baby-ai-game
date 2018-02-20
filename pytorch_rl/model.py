@@ -9,18 +9,27 @@ from utils import orthogonal
 class FFPolicy(nn.Module):
     def __init__(self):
         super(FFPolicy, self).__init__()
+        
 
     def forward(self, inputs, states, masks):
         raise NotImplementedError
 
-    def act(self, inputs, states, masks, deterministic=False):
-        value, x, states = self(inputs, states, masks)
+    def act(self, inputs, states, masks, deterministic=False,missions=False):
+        if missions is not False :
+            value, x, states = self(inputs, states, masks,missions)
+        else:
+            value, x, states = self(inputs, states, masks)
+            
+            
         action = self.dist.sample(x, deterministic=deterministic)
         action_log_probs, dist_entropy = self.dist.logprobs_and_entropy(x, action)
         return value, action, action_log_probs, states
 
-    def evaluate_actions(self, inputs, states, masks, actions):
-        value, x, states = self(inputs, states, masks)
+    def evaluate_actions(self, inputs, states, masks, actions,missions=False):
+        if missions is not False :
+            value, x, states = self(inputs, states, masks,missions)
+        else:
+            value, x, states = self(inputs, states, masks)
         action_log_probs, dist_entropy = self.dist.logprobs_and_entropy(x, actions)
         return value, action_log_probs, dist_entropy, states
 
@@ -40,12 +49,25 @@ class RecMLPPolicy(FFPolicy):
         assert action_space.__class__.__name__ == "Discrete"
         num_outputs = action_space.n
 
-        self.a_fc1 = nn.Linear(num_inputs, 64)
-        self.a_fc2 = nn.Linear(64, 64)
+        self.p_fc1 = nn.Linear(num_inputs, 64)
+        self.p_fc2 = nn.Linear(64, 64)
+        
+         # models used to mix text and image inputs
+        self.adapt_1 = nn.Linear(4096,num_inputs)
+        self.adapt_2 = nn.Linear(num_inputs,64)
+        self.adapt_3 = nn.Linear(2*64,64)
 
-        self.v_fc1 = nn.Linear(num_inputs, 64)
-        self.v_fc2 = nn.Linear(64, 64)
-        self.v_fc3 = nn.Linear(64, 1)
+
+
+        self.v_fc1 = nn.Linear(64, 64)
+        self.v_fc2 = nn.Linear(64, 32)
+        self.v_fc3 = nn.Linear(32, 1)
+        
+        self.a_fc1 = nn.Linear(64, 64)
+        self.a_fc2 = nn.Linear(64, 64)
+        #self.a_fc3 = nn.Linear(32, action_space.n)
+        
+       
 
         # Input size, hidden size
         self.gru = nn.GRUCell(64, 64)
@@ -73,25 +95,38 @@ class RecMLPPolicy(FFPolicy):
         if self.dist.__class__.__name__ == "DiagGaussian":
             self.dist.fc_mean.weight.data.mul_(0.01)
 
-    def forward(self, inputs, states, masks):
+    def forward(self, inputs, states, masks, missions=False):
         batch_numel = reduce(operator.mul, inputs.size()[1:], 1)
         inputs = inputs.view(-1, batch_numel)
 
-        x = self.a_fc1(inputs)
+        x = self.p_fc1(inputs)
         x = F.tanh(x)
-        x = self.a_fc2(x)
+        x = self.p_fc2(x)
         x = F.tanh(x)
+        
+        if missions is not False:
+            missions=self.adapt_1(missions)
+            missions=self.adapt_2(missions)
+            missions=torch.cat([missions, x],dim=1)
+            x= self.adapt_3(missions)
+
+        
 
         assert inputs.size(0) == states.size(0)
+        
         x = states = self.gru(x, states * masks)
-        actions = x
+        
+        actions = self.a_fc1(x)
+        actions = F.tanh(actions)
+        actions = self.a_fc2(actions)
+        #actions = F.tanh(actions)
+        #actions = self.v_fc3(actions)
 
-        x = self.v_fc1(inputs)
-        x = F.tanh(x)
-        x = self.v_fc2(x)
-        x = F.tanh(x)
-        x = self.v_fc3(x)
-        value = x
+        value = self.v_fc1(x)
+        value = F.tanh(value)
+        value = self.v_fc2(value)
+        value = F.tanh(value)
+        value = self.v_fc3(value)
 
         return value, actions, states
 
@@ -107,6 +142,10 @@ class MLPPolicy(FFPolicy):
         self.v_fc1 = nn.Linear(num_inputs, 64)
         self.v_fc2 = nn.Linear(64, 64)
         self.v_fc3 = nn.Linear(64, 1)
+        
+        self.adapt_1 = nn.Linear(4096,num_inputs)
+        self.adapt_2 = nn.Linear(2*num_inputs,num_inputs)
+        
 
         if action_space.__class__.__name__ == "Discrete":
             num_outputs = action_space.n
@@ -138,9 +177,16 @@ class MLPPolicy(FFPolicy):
         if self.dist.__class__.__name__ == "DiagGaussian":
             self.dist.fc_mean.weight.data.mul_(0.01)
 
-    def forward(self, inputs, states, masks):
+    def forward(self, inputs, states, masks,missions=False):
         batch_numel = reduce(operator.mul, inputs.size()[1:], 1)
         inputs = inputs.view(-1, batch_numel)
+        
+        
+        if missions is not False:
+            missions=self.adapt_1(missions)
+            missions=torch.cat([missions, inputs],dim=1)
+            inputs=self.adapt_2(missions)
+            
 
         x = self.v_fc1(inputs)
         x = F.tanh(x)
