@@ -179,6 +179,23 @@ def main():
         if args.cuda:
             missionsVariable=missionsVariable.cuda()
         return(missionsVariable)
+    
+    def correctReward(reward, cpu_actions,cpu_teaching_actions):
+        '''
+        defines the correction on the reward to apply in order to take account of the fact
+        that in mode teacher the agent might choose wrong actions while actually 
+        applying right actions, because actions are overwriten in the teacher mode
+        '''
+        si=len(cpu_actions)
+        output=0
+        #print('chosen ',cpu_actions)
+        #print('teaching ',cpu_teaching_actions)
+        #print('reward', reward)
+        for i in range(si):
+            if int(cpu_actions[i]) != int (cpu_teaching_actions[i]):
+                reward[i]-=2
+        return(output)
+                
 #    
 #    
     #envs.getText()
@@ -228,6 +245,9 @@ def main():
             #print('actions',cpu_actions)
             if useInfo:
                 obsF, reward, done, info = envs.step(cpu_teaching_actions)
+                correctReward(reward,cpu_actions,cpu_teaching_actions)
+                #print('corrected reward', reward)
+
             else:
                 obsF, reward, done, info = envs.step(cpu_actions)
             
