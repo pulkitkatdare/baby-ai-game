@@ -54,7 +54,7 @@ class Sentence2Vec(object):
             self.infersent = torch.load(self.pathToInferSentModel)
         else: 
             print("you are on CPU (~40 sentences/s)")
-            self.infersent = torch.load(self.pathToInferSentModel, map_location=lambda storage, loc: storage)
+            self.infersent = torch.load(self.pathToInferSentModel, map_location={'cuda:1' : 'cuda:0', 'cuda:2' : 'cuda:0'})
         
         
         
