@@ -45,10 +45,11 @@ class Sentence2Vec(object):
         print(self.modelDirectory)
             
         
-        nltk.download('punkt')        
+        nltk.download('punkt')  
+        self.useCuda=torch.cuda.is_available()
         
         #loading model
-        if (useCuda):
+        if (self.useCuda):
             print("you are on GPU (encoding ~1000 sentences/s, default)")
             self.infersent = torch.load(self.pathToInferSentModel)
         else: 
