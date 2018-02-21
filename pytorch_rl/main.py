@@ -130,7 +130,7 @@ def main():
         current_obs[:, -shape_dim0:] = images
         current_missions = missions
 
-    obs = envs.reset()
+    obsF = envs.reset()
 #    print('init')
 #    print(obs)
 
@@ -138,12 +138,13 @@ def main():
 #    print(len(obs))
 #    print(obs[0])
     
-    obsF,reward,done,info=envs.step(np.ones((args.num_processes)))
+    #obsF,reward,done,info=envs.step(np.ones((args.num_processes)))
     #print('after 1 step')
     #print(obs)
 
     obs=np.array([preProcessor.preProcessImage(dico['image']) for dico in obsF])
     missions=torch.stack([preProcessor.stringEncoder(dico['mission']) for dico in obsF])
+    bestActions=Variable(torch.stack( [ torch.Tensor(dico['bestActions']) for dico in obsF ] ))
     #print(missions)
     #print('missions size',missions.size())
     #print(len(obs[0]))
@@ -193,14 +194,23 @@ def main():
     if args.cuda:
         current_obs = current_obs.cuda()
         current_missions=current_missions.cuda()
+        bestActions=bestActions.cuda()
         rollouts.cuda()
 
     start = time.time()
     for j in range(num_updates):
         for step in range(args.num_steps):
             
+            if step%2==0:
+                useInfo=True
+            else:
+                useInfo=False
+            
             #preprocess the missions to be used by the model
-            missionsVariable=getMissionsAsVariables(step)
+            if useInfo:
+                missionsVariable=getMissionsAsVariables(step)
+            else:
+                missionsVariable=False
             
             # Sample actions
             value, action, action_log_prob, states = actor_critic.act(
@@ -209,14 +219,24 @@ def main():
                 Variable(rollouts.masks[step], volatile=True),
                 missions=missionsVariable
             )
+            
             cpu_actions = action.data.squeeze(1).cpu().numpy()
+            
+            cpu_teaching_actions=bestActions.data.squeeze(1).cpu().numpy()
+            
             # Obser reward and next obs
             #print('actions',cpu_actions)
-            obsF, reward, done, info = envs.step(cpu_actions)
+            if useInfo:
+                obsF, reward, done, info = envs.step(cpu_teaching_actions)
+            else:
+                obsF, reward, done, info = envs.step(cpu_actions)
             
             ## get the image and mission observation from the observation dictionnary
             obs=np.array([preProcessor.preProcessImage(dico['image']) for dico in obsF])
             missions=torch.stack([preProcessor.stringEncoder(dico['mission']) for dico in obsF])
+            bestActions=Variable(torch.stack( [ torch.Tensor(dico['bestActions']) for dico in obsF ] ))
+            if args.cuda:
+                bestActions=bestActions.cuda()
 
 
             reward = torch.from_numpy(np.expand_dims(np.stack(reward), 1)).float()
@@ -242,8 +262,11 @@ def main():
             update_current_obs(obs,missions)
             rollouts.insert(step, current_obs, current_missions, states.data, action.data, action_log_prob.data, value.data, reward, masks)
 
-        missionsVariable=getMissionsAsVariables(-1)
-        
+        if useInfo:
+            missionsVariable=getMissionsAsVariables(-1)
+        else:
+            missionsVariable=False
+            
         next_value = actor_critic(
             Variable(rollouts.observations[-1], volatile=True),
             Variable(rollouts.states[-1], volatile=True),

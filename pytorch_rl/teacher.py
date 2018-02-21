@@ -29,7 +29,7 @@ class Teacher(Wrapper):
                    'door':['open the door', 'toggle the door', 'open it', 'tire la chevillette et la bobinette cherra...']}
 
     
-        self.actionCorrespondance={'left':[0],'right':[1],'continue':[2],'key':[3],'door':[3], 'turn back':[0,1]}
+        self.actionCorrespondance={'left':[0],'right':[1],'continue':[2],'key':[3],'door':[3], 'turn back':[1]}
         
         
         self.bestActions=None
@@ -49,10 +49,10 @@ class Teacher(Wrapper):
         obs = self.env.reset(**kwargs)
         
         if not isinstance(obs, dict):
-                obs = { "image": obs, 'mission':'' }
+                obs = { "image": obs, 'mission':'','bestActions':[] }
             
         obs['mission']=self.generateAdvice()[1]
-        
+        obs['bestActions']=self.bestActions
         return (obs)
 
     
@@ -78,6 +78,7 @@ class Teacher(Wrapper):
         obs = {
             "image": obs,
             "mission": advice,
+            'bestActions':self.bestActions
         }        
 
         #print('best action ', self.bestActions)

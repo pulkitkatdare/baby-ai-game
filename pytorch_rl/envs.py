@@ -43,7 +43,7 @@ class WrapPyTorch(gym.ObservationWrapper):
 
     def observation(self, observation):
         #print('observation', observation)
-        return {'image':observation['image'].transpose(2, 0, 1),'mission':observation['mission']}
+        return {'image':observation['image'].transpose(2, 0, 1),'mission':observation['mission'],'bestActions':observation['bestActions']}
     
     #def _observation(self, observation):
         #return observation['image'].transpose(2, 0, 1)

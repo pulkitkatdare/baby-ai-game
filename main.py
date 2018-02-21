@@ -270,7 +270,7 @@ class AIGameWindow(QMainWindow):
             action = selectAction(self.lastObs)
 
         obs, reward, done, info = self.env.step(action)
-        print(obs)
+        print('action ID', self.env.bestActions)
         if not isinstance(obs, dict):
             obs = { 'image': obs, 'mission': '' }
 
