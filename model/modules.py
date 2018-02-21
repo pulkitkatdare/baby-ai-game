@@ -368,9 +368,9 @@ class TemporalAutoEncoder(nn.Module):
         self.hidden_size = reduce(operator.mul, vision_encoded_shape, 1)
 
         self.linear_1 = nn.Linear(input_size, self.hidden_size)
-        self.deconv = vision_module.build_deconv()
+        self.deconv = self.vision_module.build_deconv()
 
-    def forward(self, visual_input, logit_action):
+    def forward(self, visual_input, logit_action, deconvFlag=True):
         '''
         Argument:
             visual_encoded: output from the visual module, has shape [1, 64, 7, 7]
@@ -383,10 +383,57 @@ class TemporalAutoEncoder(nn.Module):
         action_out = action_out.view(
             action_out.size()[0], *self.vision_encoded_shape)
 
-        combine = torch.mul(action_out, visual_encoded)
+        out = torch.mul(action_out, visual_encoded)
 
-        out = self.deconv(combine)
+        if deconvFlag:
+            out = self.deconv(out)
         return out
+
+
+class ICM(nn.Module):
+
+    def __init__(self, policy_network, action_space,
+                 input_size=128, hidden_size=3136, act_hid_size=128):
+        super(ICM, self).__init__()
+
+        self.policy_network = policy_network
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.action_space = action_space
+        self.act_hid_size = act_hid_size
+        self.action_space = action_space
+
+        self.linear_1 = nn.Linear(input_size, self.hidden_size)
+        self.linear_2 = nn.Linear(self.hidden_size, self.hidden_size)
+
+        self.linear_3 = nn.Linear(2 * self.hidden_size, self.act_hid_size)
+        self.linear_4 = nn.Linear(self.act_hid_size, self.action_space)
+
+    def forward(self, state, next_state, logit_action):
+        '''
+        Argument:
+            visual_encoded: output from the visual module, has shape [1, 64, 7, 7]
+            logit_action: output action logit from policy, has shape [1, 10]
+        '''
+
+        action_out = self.policy_network.tAE(logit_action)  # [1, 128]
+        action_out = self.linear_1(action_out)
+        action_out = action_out.view_as(state)
+
+        out = torch.mul(action_out, state)
+
+        out = self.linear_2(out.view(out.size(0), -1)).view_as(state)
+
+        concatState = torch.cat(
+            [
+                state.view(state.size(0), -1),
+                next_state.view(next_state.size(0), -1)
+            ], dim=1
+        )
+        act_pred = self.linear_3(concatState)
+        act_pred = self.linear_4(act_pred)
+
+        return out, act_pred
 
 
 class RNNStatePredictor(nn.Module):

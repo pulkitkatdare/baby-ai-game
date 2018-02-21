@@ -17,6 +17,7 @@ class RolloutStorage(object):
         self.actions = torch.zeros(num_steps, num_processes, action_shape)
         if action_space.__class__.__name__ == 'Discrete':
             self.actions = self.actions.long()
+        # permet de savoir quel process est execute pour quel time_step
         self.masks = torch.ones(num_steps + 1, num_processes, 1)
 
     def cuda(self):

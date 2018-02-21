@@ -94,6 +94,7 @@ def main():
     elif args.algo == 'acktr':
         optimizer = KFACOptimizer(actor_critic)
 
+    # permet de stocker les executions d'une episode pour les different processus.
     rollouts = RolloutStorage(args.num_steps, args.num_processes, obs_shape, envs.action_space, actor_critic.state_size)
     current_obs = torch.zeros(args.num_processes, *obs_shape)
 
@@ -101,7 +102,9 @@ def main():
         shape_dim0 = envs.observation_space.shape[0]
         obs = torch.from_numpy(obs).float()
         if args.num_stack > 1:
+            # copy the existing frames backward
             current_obs[:, :-shape_dim0] = current_obs[:, shape_dim0:]
+        # always update the current observation at the end for all process
         current_obs[:, -shape_dim0:] = obs
 
     obs = envs.reset()
@@ -139,7 +142,7 @@ def main():
 
             if args.cuda:
                 masks = masks.cuda()
-
+            # for stacked observations
             if current_obs.dim() == 4:
                 current_obs *= masks.unsqueeze(2).unsqueeze(2)
             else:
