@@ -222,7 +222,13 @@ def main():
                 useInfo=True
             else:
                 useInfo=False
-            useInfo=False
+            
+            if step%2==0:
+                useTeachingMission=True
+            else:
+                useTeachingMission=False
+                
+            useTeachingMission=False
             
             #preprocess the missions to be used by the model
             if useInfo:
@@ -244,7 +250,7 @@ def main():
             
             # Obser reward and next obs
             #print('actions',cpu_actions)
-            if useInfo:
+            if useTeachingMission:
                 obsF, reward, done, info = envs.step(cpu_teaching_actions)
                 correctReward(reward,cpu_actions,cpu_teaching_actions)
                 #print('corrected reward', reward)
