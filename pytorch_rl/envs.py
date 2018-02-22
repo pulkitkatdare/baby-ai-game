@@ -6,6 +6,7 @@ import sys
 
 import teacher
 import gym_minigrid
+from baselines import bench
 
 
 def make_env(env_id, seed, rank, log_dir):
@@ -21,6 +22,8 @@ def make_env(env_id, seed, rank, log_dir):
             env = gym.make(env_id)
 
         env.seed(seed + rank)
+        if log_dir is not None:
+            env = bench.Monitor(env, os.path.join(log_dir, str(rank)))
 
         # Maxime: until RL code supports dict observations, squash observations into a flat vector
         #if isinstance(env.observation_space, spaces.Dict):

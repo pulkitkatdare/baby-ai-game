@@ -59,6 +59,7 @@ def load_data(indir, smooth, bin_size):
             f.readline()
             f.readline()
             for line in f:
+                print('this is the line',line)
                 tmp = line.split(',')
                 t_time = float(tmp[2])
                 tmp = [t_time, int(tmp[1]), float(tmp[0])]
@@ -103,6 +104,7 @@ color_defaults = [
 def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1):
     tx, ty = load_data(folder, smooth, bin_size)
     if tx is None or ty is None:
+        print('nothing in folder', folder)
         return win
 
     fig = plt.figure()

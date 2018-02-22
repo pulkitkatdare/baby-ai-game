@@ -60,7 +60,9 @@ def main():
     if args.vis:
         from visdom import Visdom
         print('using VISDOM')
-        viz = Visdom(server='elisa2.iro.umontreal.ca',port=24345)
+        #viz = Visdom(env='Hello')
+        viz = Visdom(server='elisa2.iro.umontreal.ca',port=24345,env='babyAIGame')
+        viz.text('using the basic info')
         win = None
 
     envs = [make_env(args.env_name, args.seed, i, args.log_dir)
