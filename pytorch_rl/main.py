@@ -61,7 +61,7 @@ def main():
         from visdom import Visdom
         print('using VISDOM')
         #viz = Visdom(env='Hello')
-        viz = Visdom(server='elisa2.iro.umontreal.ca',port=24435,env='babyAIGame')
+        viz = Visdom(server='eos11@elisa2.iro.umontreal.ca',port=24435,env='babyAIGame')
         viz.text('using the basic info')
         win = None
 
