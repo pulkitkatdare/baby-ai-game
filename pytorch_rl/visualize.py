@@ -59,12 +59,7 @@ def load_data(indir, smooth, bin_size):
             f.readline()
             f.readline()
             for line in f:
-                print('this is the line',line)
-                tmp = line.split(',')
-                print('this is tmp0', tmp[0])
-                print('this is tmp1', tmp[1])
-                print('this is tmp2', tmp[2])
-                
+                tmp = line.split(',')    
 
 
                 t_time = float(tmp[2])
@@ -147,5 +142,5 @@ def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1):
 
 if __name__ == "__main__":
     from visdom import Visdom
-    viz = Visdom(server='elisa2.iro.umontreal.ca',port=24345)
+    viz = Visdom(server='http://eos11',port=24431)
     visdom_plot(viz, None, '/tmp/gym/', 'BreakOut', 'a2c', bin_size=100, smooth=1)
