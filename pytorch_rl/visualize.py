@@ -106,7 +106,7 @@ def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1):
     tx, ty = load_data(folder, smooth, bin_size)
     print(tx,ty)
     if tx is None or ty is None:
-        print('nothing in folder', folder)
+        #print('nothing in folder', folder)
         return win
 
     fig = plt.figure()
