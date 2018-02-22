@@ -59,7 +59,8 @@ def main():
 
     if args.vis:
         from visdom import Visdom
-        viz = Visdom()
+        print('using VISDOM')
+        viz = Visdom(server='elisa2.iro.umontreal.ca',port=24345)
         win = None
 
     envs = [make_env(args.env_name, args.seed, i, args.log_dir)
