@@ -50,7 +50,20 @@ def main():
     #to be deleted after debug
     global envs,obs
     
-    
+    info={'timestep':[],
+          'FPS':[],
+          'meanReward':[],
+          'medianReward':[],
+          'minReward':[],
+          'minReward':[],
+          'maxReward':[],
+          'entropy':[],
+          'valueLoss':[],
+          'actionLoss':[],
+          'numberOfChoices_Teacher':[[]], #number of times the teacher selected this action as the best action
+          'numberOfChoices_Agent':[[]]}   #number of times the agent choosed this action
+                                        #They are represented as an array of shape Nactions          
+          
     print("#######")
     print("WARNING: All rewards are clipped or normalized so you need to use a monitor (see envs.py) or visdom plot to get true rewards")
     print("#######")
@@ -90,6 +103,8 @@ def main():
         actor_critic = RecMLPPolicy(obs_numel, envs.action_space)
     else:
         actor_critic = MLPPolicy(obs_numel, envs.action_space)
+        
+    numberOfActions=envs.action_space.n
 
     # Maxime: log some info about the model and its size
     modelSize = 0
@@ -121,6 +136,11 @@ def main():
     preProcessor=preProcess.PreProcessor()
     current_missions=torch.zeros(args.num_processes, maxSizeOfMissionsSelected)
 
+    
+    currentCount={'numberOfChoices_Teacher':[0 for i in range(numberOfActions)],
+                                             'numberOfChoices_Agent':[0 for i in range(numberOfActions)]}
+
+    
     
     def update_current_obs(obs,missions):
         #print('top')
@@ -198,6 +218,35 @@ def main():
             if int(cpu_actions[i]) != int (cpu_teaching_actions[i]):
                 reward[i]-=2
         return(output)
+        
+        
+    def updateNumberOfActions(currentCount, actions_Agent, actions_Teacher):
+        '''
+        This function is used to keep track of the actions selected by the agent
+        it updates the number of times that a certain action has been selected by the agent
+        and the number of times an action has been indicated by the teacher
+        
+        currentCount : array of size numberOfActions, 
+        actions_Agent/Teacher : array containing the actions id selected by the agent/teacher. 
+                                Size Nenvs*WhateverNumberOfPossibleActions
+        '''
+        
+                
+        for envAction in actions_Agent:
+            for actionID in envAction:
+                currentCount['numberOfChoices_Agent'][int(actionID)]+=1
+            
+        for envAction in actions_Teacher:
+            for actionID in envAction:
+                currentCount['numberOfChoices_Teacher'][int(actionID)]+=1
+        
+        return(0)
+        
+            
+        
+        
+        
+        
                 
 #    
 #    
@@ -256,9 +305,13 @@ def main():
                 missions=missionsVariable
             )
             
+            updateNumberOfActions(currentCount, action.data, bestActions.data)
+            
             cpu_actions = action.data.squeeze(1).cpu().numpy()
             
             cpu_teaching_actions=bestActions.data.squeeze(1).cpu().numpy()
+            
+            
             
             # Obser reward and next obs
             #print('actions',cpu_actions)
@@ -275,6 +328,10 @@ def main():
             obs=np.array([preProcessor.preProcessImage(dico['image']) for dico in obsF])
             missions=torch.stack([preProcessor.stringEncoder(dico['mission']) for dico in obsF])
             bestActions=Variable(torch.stack( [ torch.Tensor(dico['bestActions']) for dico in obsF ] ))
+            
+            
+            
+            
             if args.cuda:
                 bestActions=bestActions.cuda()
 
@@ -427,6 +484,21 @@ def main():
                        final_rewards.min(),
                        final_rewards.max(), dist_entropy.data[0],
                        value_loss.data[0], action_loss.data[0]))
+            
+            info['timestep']+=[total_num_steps]
+            info['FPS']+=[int(total_num_steps / (end - start))]
+            info['meanReward']+=[final_rewards.mean()]
+            info['medianReward']+=[final_rewards.median()]
+            info['minReward']+=[final_rewards.min()]
+            info['maxReward']+=[final_rewards.max()]
+            info['entropy']+=[dist_entropy.data[0]]
+            info['valueLoss']+=[value_loss.data[0]]
+            info['actionLoss']+=[action_loss.data[0]]
+            
+            info['numberOfChoices_Teacher']+=[currentCount['numberOfChoices_Teacher']]
+            info['numberOfChoices_Agent']+=[currentCount['numberOfChoices_Agent']]
+            
+            
         if args.vis and j % args.vis_interval == 0:
             try:
                 # Sometimes monitor doesn't properly flush the outputs
