@@ -235,8 +235,8 @@ def main():
             
             
             #DEBUG
-            useTeachingMission=False
-            useInfo=False
+            #useTeachingMission=False
+            #useInfo=False
             
             
             
@@ -263,7 +263,7 @@ def main():
             # Obser reward and next obs
             #print('actions',cpu_actions)
             if useTeachingMission:
-                print('use mission')
+                #print('use mission')
                 obsF, reward, done, info = envs.step(cpu_teaching_actions)
                 correctReward(reward,cpu_actions,cpu_teaching_actions)
                 #print('corrected reward', reward)
