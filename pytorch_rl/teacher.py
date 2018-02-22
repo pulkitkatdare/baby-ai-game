@@ -33,6 +33,7 @@ class Teacher(Wrapper):
         
         
         self.bestActions=None
+        self.previousReward=None
         print('environment with Teacher created!')
         
         
@@ -62,7 +63,13 @@ class Teacher(Wrapper):
         """
         
         obs, reward, done, info = self.env.step(action)
-
+        
+        
+        if done:
+            reward=self.previousReward+10
+        else:
+            self.previousReward=reward
+        
         #print(self.bestActions)
         if action in self.bestActions:
             reward+=1

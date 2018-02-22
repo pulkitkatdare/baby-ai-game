@@ -222,6 +222,7 @@ def main():
                 useInfo=True
             else:
                 useInfo=False
+            useInfo=False
             
             #preprocess the missions to be used by the model
             if useInfo:
