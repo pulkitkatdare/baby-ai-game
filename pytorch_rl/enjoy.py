@@ -49,6 +49,8 @@ render_func('human')
 obs = env.reset()
 update_current_obs(obs)
 
+
+
 while True:
     value, action, _, states = actor_critic.act(
         Variable(current_obs, volatile=True),

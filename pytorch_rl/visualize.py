@@ -101,7 +101,7 @@ color_defaults = [
     '#17becf'  # blue-teal
 ]
 
-def plotWithVisdom(tx,ty,name,game,viz,ylabel,xlabel='Number of Timesteps'):
+def plotEntropyWithVisdom(tx,ty,name,game,viz,win,ylabel='entropy',xlabel='Number of Timesteps'):
     fig = plt.figure()
     plt.plot(tx, ty, label="{}".format(name))
 
@@ -120,21 +120,71 @@ def plotWithVisdom(tx,ty,name,game,viz,ylabel,xlabel='Number of Timesteps'):
 
     # Show it in visdom
     image = np.transpose(image, (2, 0, 1))
-    return(viz.image(image))
+    win['entropy']=viz.image(image,win['entropy'])
+    return(win)
+    
+    
+def plotRewardsWithVisdom(timestep,meanReward,medianReward,minReward,maxReward,
+                          name,game,viz,win,ylabel='Rewards',xlabel='Number of Timesteps'):
+    fig = plt.figure()
+    
+    plt.plot(timestep,minReward,label='min reward',color='red')
+    plt.plot(timestep,maxReward,label='max reward',color='blue')
+    #print('timesteps',timestep)
+    #print('min', minReward)
+    #print('max',maxReward)
+    #print('median',medianReward)
+    plt.fill_between(timestep, minReward, maxReward, color='blue', alpha='0.2')
+
+    plt.plot(timestep,meanReward,label='mean reward',color='green')
+    plt.plot(timestep,medianReward,label='median reward',color='yellow')
+
+
+
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+
+
+    plt.title(game)
+    plt.legend(loc=4)
+    plt.show()
+    plt.draw()
+
+    image = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3, ))
+    plt.close(fig)
+
+    # Show it in visdom
+    image = np.transpose(image, (2, 0, 1))
+    win['rewards']=viz.image(image,win=win['rewards'])
+    return(win)
     
     
 exclude=['updates','timestep','numberOfChoices_Teacher','numberOfChoices_Agent']
 def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1,infoToSave=None):
     
     
-    tx=infoToSave['timestep']
-    for key in iter(infoToSave):  
-        if not key in exclude:
-            ty=infoToSave[key]
-            #print(key)
-            #print('tx',tx)
-            #print('ty',ty)
-            output=plotWithVisdom(tx,ty,name,game,viz,key)
+    timestep=infoToSave['timestep']
+    meanReward=infoToSave['meanReward']
+    medianReward=infoToSave['medianReward']
+    minReward=infoToSave['minReward']
+    maxReward=infoToSave['maxReward']
+
+    win=plotRewardsWithVisdom(timestep,meanReward,medianReward,minReward,maxReward,name,game,viz,win)    
+    
+    
+    
+    entropy=infoToSave['entropy']
+    win=plotEntropyWithVisdom(timestep,entropy,name,game,viz,win)
+    
+#    for key in iter(infoToSave):  
+#        if not key in exclude:
+#            ty=infoToSave[key]
+#            #print(key)
+#            #print('tx',tx)
+#            #print('ty',ty)
+#            output=plotWithVisdom(tx,ty,name,game,viz,key)
 
 
     # Ugly hack to detect atari
@@ -149,7 +199,7 @@ def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1,infoToSave=
 
     
     
-    return (output)
+    return (win)
 
 
 if __name__ == "__main__":

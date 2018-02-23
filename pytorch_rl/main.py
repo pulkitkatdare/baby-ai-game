@@ -75,7 +75,6 @@ def main():
     if args.vis:
         from visdom import Visdom
         print('using VISDOM')
-        #viz = Visdom(env='Hello')
         if os.name=='nt':
             print('using visdom for testing on local windows machine')
             viz = Visdom(env='babyAIGame',port=8097)
@@ -83,7 +82,10 @@ def main():
         else:
             print('using visdom on a linux server')
             viz = Visdom(server='http://eos11',port=24431,env='babyAIGame')
-        win = None
+        
+        viz.text('testing the visdom env')
+       
+        win = {'rewards':None,'entropy':None,'statsAction':None}
 
     envs = [make_env(args.env_name, args.seed, i, args.log_dir)
                 for i in range(args.num_processes)]
@@ -492,6 +494,10 @@ def main():
                        final_rewards.max(), dist_entropy.data[0],
                        value_loss.data[0], action_loss.data[0]))
             
+            #print('final rewards',final_rewards.data)
+            #print('min reward', final_rewards.min())
+            #print('median reward ', final_rewards.median() )
+            
             infoToSave['timestep']+=[total_num_steps]
             infoToSave['FPS']+=[int(total_num_steps / (end - start))]
             infoToSave['meanReward']+=[final_rewards.mean()]
@@ -509,6 +515,7 @@ def main():
         if args.vis and j % args.vis_interval == 0:
             try:
                 # Sometimes monitor doesn't properly flush the outputs
+                #if j>0:
                 win = visdom_plot(viz, win, args.log_dir, args.env_name, args.algo,infoToSave=infoToSave)
             except IOError:
                 pass
