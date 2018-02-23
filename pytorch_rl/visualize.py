@@ -101,7 +101,7 @@ color_defaults = [
     '#17becf'  # blue-teal
 ]
 
-def plotWithVisdom(tx,ty,name,game, win,viz,ylabel,xlabel='Number of Timesteps'):
+def plotWithVisdom(tx,ty,name,game,viz,ylabel,xlabel='Number of Timesteps'):
     fig = plt.figure()
     plt.plot(tx, ty, label="{}".format(name))
 
@@ -120,7 +120,7 @@ def plotWithVisdom(tx,ty,name,game, win,viz,ylabel,xlabel='Number of Timesteps')
 
     # Show it in visdom
     image = np.transpose(image, (2, 0, 1))
-    return(viz.image(image,win=win))
+    return(viz.image(image))
     
     
 exclude=['updates','timestep','numberOfChoices_Teacher','numberOfChoices_Agent']
@@ -134,7 +134,7 @@ def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1,infoToSave=
             #print(key)
             #print('tx',tx)
             #print('ty',ty)
-            output=plotWithVisdom(tx,ty,name,game,win,viz,key)
+            output=plotWithVisdom(tx,ty,name,game,viz,key)
 
 
     # Ugly hack to detect atari
