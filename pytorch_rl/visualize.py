@@ -101,29 +101,12 @@ color_defaults = [
     '#17becf'  # blue-teal
 ]
 
-
-def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1):
-    tx, ty = load_data(folder, smooth, bin_size)
-    #print(tx,ty)
-    if tx is None or ty is None:
-        #print('nothing in folder', folder)
-        return win
-
+def plotWithVisdom(tx,ty,name,game, win,viz,ylabel,xlabel='Number of Timesteps'):
     fig = plt.figure()
     plt.plot(tx, ty, label="{}".format(name))
 
-    # Ugly hack to detect atari
-    if game.find('NoFrameskip') > -1:
-        plt.xticks([1e6, 2e6, 4e6, 6e6, 8e6, 10e6],
-                   ["1M", "2M", "4M", "6M", "8M", "10M"])
-        plt.xlim(0, 10e6)
-    else:
-        plt.xticks([1e5, 2e5, 4e5, 6e5, 8e5, 1e5],
-                   ["0.1M", "0.2M", "0.4M", "0.6M", "0.8M", "1M"])
-        plt.xlim(0, 1e6)
-
-    plt.xlabel('Number of Timesteps')
-    plt.ylabel('Rewards')
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
 
 
     plt.title(game)
@@ -137,7 +120,36 @@ def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1):
 
     # Show it in visdom
     image = np.transpose(image, (2, 0, 1))
-    return viz.image(image, win=win)
+    return(viz.image(image,win=win))
+    
+    
+exclude=['updates','timestep','numberOfChoices_Teacher','numberOfChoices_Agent']
+def visdom_plot(viz, win, folder, game, name, bin_size=100, smooth=1,infoToSave=None):
+    
+    
+    tx=infoToSave['timestep']
+    for key in iter(infoToSave):  
+        if not key in exclude:
+            ty=infoToSave[key]
+            #print(key)
+            #print('tx',tx)
+            #print('ty',ty)
+            output=plotWithVisdom(tx,ty,name,game,win,viz,key)
+
+
+    # Ugly hack to detect atari
+#    if game.find('NoFrameskip') > -1:
+#        plt.xticks([1e6, 2e6, 4e6, 6e6, 8e6, 10e6],
+#                   ["1M", "2M", "4M", "6M", "8M", "10M"])
+#        plt.xlim(0, 10e6)
+#    else:
+#        plt.xticks([1e5, 2e5, 4e5, 6e5, 8e5, 1e5],
+#                   ["0.1M", "0.2M", "0.4M", "0.6M", "0.8M", "1M"])
+#        plt.xlim(0, 1e6)
+
+    
+    
+    return (output)
 
 
 if __name__ == "__main__":

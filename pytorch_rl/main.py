@@ -50,7 +50,7 @@ def main():
     #to be deleted after debug
     global envs,obs
     
-    info={'timestep':[],
+    infoToSave={'timestep':[],
           'FPS':[],
           'meanReward':[],
           'medianReward':[],
@@ -60,9 +60,11 @@ def main():
           'entropy':[],
           'valueLoss':[],
           'actionLoss':[],
-          'numberOfChoices_Teacher':[[]], #number of times the teacher selected this action as the best action
-          'numberOfChoices_Agent':[[]]}   #number of times the agent choosed this action
-                                        #They are represented as an array of shape Nactions          
+          'numberOfChoices_Teacher':[], 
+          'numberOfChoices_Agent':[] } 
+            #number of times the teacher selected this action as the best action
+            #number of times the agent choosed this action
+            #They are represented as an array of shape Nactions          
           
     print("#######")
     print("WARNING: All rewards are clipped or normalized so you need to use a monitor (see envs.py) or visdom plot to get true rewards")
@@ -74,8 +76,13 @@ def main():
         from visdom import Visdom
         print('using VISDOM')
         #viz = Visdom(env='Hello')
-        viz = Visdom(server='http://eos11',port=24431,env='babyAIGame')
-        viz.text('using the basic info')
+        if os.name=='nt':
+            print('using visdom for testing on local windows machine')
+            viz = Visdom(env='babyAIGame',port=8097)
+
+        else:
+            print('using visdom on a linux server')
+            viz = Visdom(server='http://eos11',port=24431,env='babyAIGame')
         win = None
 
     envs = [make_env(args.env_name, args.seed, i, args.log_dir)
@@ -485,24 +492,24 @@ def main():
                        final_rewards.max(), dist_entropy.data[0],
                        value_loss.data[0], action_loss.data[0]))
             
-            info['timestep']+=[total_num_steps]
-            info['FPS']+=[int(total_num_steps / (end - start))]
-            info['meanReward']+=[final_rewards.mean()]
-            info['medianReward']+=[final_rewards.median()]
-            info['minReward']+=[final_rewards.min()]
-            info['maxReward']+=[final_rewards.max()]
-            info['entropy']+=[dist_entropy.data[0]]
-            info['valueLoss']+=[value_loss.data[0]]
-            info['actionLoss']+=[action_loss.data[0]]
+            infoToSave['timestep']+=[total_num_steps]
+            infoToSave['FPS']+=[int(total_num_steps / (end - start))]
+            infoToSave['meanReward']+=[final_rewards.mean()]
+            infoToSave['medianReward']+=[final_rewards.median()]
+            infoToSave['minReward']+=[final_rewards.min()]
+            infoToSave['maxReward']+=[final_rewards.max()]
+            infoToSave['entropy']+=[dist_entropy.data[0]]
+            infoToSave['valueLoss']+=[value_loss.data[0]]
+            infoToSave['actionLoss']+=[action_loss.data[0]]
             
-            info['numberOfChoices_Teacher']+=[currentCount['numberOfChoices_Teacher']]
-            info['numberOfChoices_Agent']+=[currentCount['numberOfChoices_Agent']]
+            infoToSave['numberOfChoices_Teacher']+=[currentCount['numberOfChoices_Teacher']]
+            infoToSave['numberOfChoices_Agent']+=[currentCount['numberOfChoices_Agent']]
             
             
         if args.vis and j % args.vis_interval == 0:
             try:
                 # Sometimes monitor doesn't properly flush the outputs
-                win = visdom_plot(viz, win, args.log_dir, args.env_name, args.algo)
+                win = visdom_plot(viz, win, args.log_dir, args.env_name, args.algo,infoToSave=infoToSave)
             except IOError:
                 pass
 
