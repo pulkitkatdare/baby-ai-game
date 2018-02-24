@@ -23,8 +23,6 @@ class MultiEnv(gym.Env):
         self.observation_space = None
 
         for env_name in env_names:
-            print(env_name)
-
             env = gym.make(env_name)
 
             if self.action_space is None:
@@ -60,10 +58,9 @@ class MultiEnv(gym.Env):
 
         obs, reward, done, info = env.step(action)
 
-        # TODO: normalize rewards based on reward range
-
-
-
+        # Normalize the reward into the [0,1] range
+        reward_min, reward_max = env.reward_range
+        reward = (reward - reward_min) / (reward_max - reward_min)
 
         info['multi_env'] = {
             'env_name': self.env_names[self.cur_env_idx]
