@@ -42,6 +42,7 @@ class MultiEnv(gym.Env):
 
         self.cur_env_idx = 0
         self.cur_reward_sum = 0
+        self.cur_num_steps = 0
 
     def seed(self, seed):
         for env in self.env_list:
@@ -67,6 +68,7 @@ class MultiEnv(gym.Env):
 
         # Keep track of the total reward for this episode
         self.cur_reward_sum += reward
+        self.cur_num_steps += 1
 
         # Store the current environment name in the info object
         info['multi_env'] = {}
@@ -75,8 +77,10 @@ class MultiEnv(gym.Env):
         # If the episode is done, sample a new environment
         if done:
             # Add the total reward for the episode to the info object
-            info['multi_env']['total_reward']= self.cur_reward_sum
+            info['multi_env']['episode_reward']= self.cur_reward_sum
+            info['multi_env']['episode_steps']= self.cur_num_steps
             self.cur_reward_sum = 0
+            self.cur_num_steps = 0
 
             #self.cur_env_idx = self.np_random.randint(0, len(self.env_list))
             self.cur_env_idx = (self.cur_env_idx + 1) % len(self.env_list)
@@ -112,28 +116,29 @@ class MultiEnvGraphing:
         self.vis = Visdom()
         assert self.vis.check_connection()
 
-        #self.plot = None
+        # Close existing windows
+        self.vis.close()
 
         # Per-environment data, indexed by environment name
         self.env_data = {}
 
+        self.plot = None
+
     def process(self, infos):
-        # FIXME: seems it would be cleaner to have one object per env?
-        # Can do setdefault to get the initial values all at once
-
-        # env_data dict
-
         for info in infos:
             info = info['multi_env']
             env_name = info['env_name']
 
-            if 'total_reward' not in info:
+            if 'episode_reward' not in info:
                 continue
 
-            total_reward = info['total_reward']
-            self.addDataPoint(env_name, total_reward)
+            self.addDataPoint(
+                env_name,
+                info['episode_reward'],
+                info['episode_steps']
+            )
 
-    def addDataPoint(self, env_name, total_reward):
+    def addDataPoint(self, env_name, episode_reward, episode_steps):
         # FIXME: switch to total time steps instead
 
         data = self.env_data.setdefault(
@@ -142,18 +147,20 @@ class MultiEnvGraphing:
                 y_values = [],
                 x_values = [],
                 num_episodes = 0,
+                num_steps = 0,
                 running_avg = 0,
                 plot = None
             )
         )
 
-        data['num_episodes'] += 1
-
         data['running_avg'] *= 0.995
-        data['running_avg'] += 0.005 * total_reward
+        data['running_avg'] += 0.005 * episode_reward
+
+        data['num_episodes'] += 1
+        data['num_steps'] += episode_steps
 
         if data['num_episodes'] % 100 == 0:
-            data['x_values'].append(data['num_episodes'])
+            data['x_values'].append(data['num_steps'])
             data['y_values'].append(data['running_avg'])
 
             data['plot'] = self.vis.line(
@@ -162,10 +169,11 @@ class MultiEnvGraphing:
                 opts = dict(
                     #title="Reward per episode",
                     title = env_name,
-                    xlabel='Episodes',
+                    xlabel='Total time steps',
                     ylabel='Reward per episode',
                     ytickmin=0,
                     ytickmax=1,
+                    ytickstep=0.1,
                 ),
                 win = data['plot']
             )

@@ -15,11 +15,14 @@ def make_env(env_id, seed, rank, log_dir):
     def _thunk():
         env = MultiEnv([
             'MiniGrid-Empty-6x6-v0',
-            #'MiniGrid-GoToDoor-5x5-v0',
+            'MiniGrid-Empty-8x8-v0',
 
+            #'MiniGrid-GoToDoor-5x5-v0',
             'MiniGrid-GoToDoor-6x6-v0',
 
             'MiniGrid-GoToObject-6x6-N2-v0',
+
+            'MiniGrid-DoorKey-6x6-v0',
 
             'MiniGrid-PutNear-6x6-N2-v0'
         ])
