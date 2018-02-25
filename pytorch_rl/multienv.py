@@ -1,3 +1,5 @@
+import numpy as np
+
 import gym
 import gym_minigrid
 
@@ -39,6 +41,7 @@ class MultiEnv(gym.Env):
         self.reward_range = (0, 1)
 
         self.cur_env_idx = 0
+        self.cur_reward_sum = 0
 
     def seed(self, seed):
         for env in self.env_list:
@@ -62,20 +65,22 @@ class MultiEnv(gym.Env):
         reward_min, reward_max = env.reward_range
         reward = (reward - reward_min) / (reward_max - reward_min)
 
-        info['multi_env'] = {
-            'env_name': self.env_names[self.cur_env_idx]
-        }
+        # Keep track of the total reward for this episode
+        self.cur_reward_sum += reward
+
+        # Store the current environment name in the info object
+        info['multi_env'] = {}
+        info['multi_env']['env_name']= self.env_names[self.cur_env_idx]
 
         # If the episode is done, sample a new environment
         if done:
+            # Add the total reward for the episode to the info object
+            info['multi_env']['total_reward']= self.cur_reward_sum
+            self.cur_reward_sum = 0
+
             #self.cur_env_idx = self.np_random.randint(0, len(self.env_list))
             self.cur_env_idx = (self.cur_env_idx + 1) % len(self.env_list)
             #print(self.cur_env_idx)
-
-            # TODO: keep track of running reward per episode?
-
-
-
 
 
         return obs, reward, done, info
@@ -91,3 +96,90 @@ class MultiEnv(gym.Env):
         self.cur_env_idx = 0
         self.env_names = None
         self.env_list = None
+
+class MultiEnvGraphing:
+    """
+    Code to produce visdom plots of the training progress.
+
+    Start a Visdom server with:
+        python -m visdom.server
+    The Visdom page will be at:
+        http://localhost:8097/
+    """
+
+    def __init__(self):
+        from visdom import Visdom
+        self.vis = Visdom()
+        assert self.vis.check_connection()
+
+        #self.plot = None
+
+        # Per-environment data, indexed by environment name
+        self.env_data = {}
+
+    def process(self, infos):
+        # FIXME: seems it would be cleaner to have one object per env?
+        # Can do setdefault to get the initial values all at once
+
+        # env_data dict
+
+        for info in infos:
+            info = info['multi_env']
+            env_name = info['env_name']
+
+            if 'total_reward' not in info:
+                continue
+
+            total_reward = info['total_reward']
+            self.addDataPoint(env_name, total_reward)
+
+    def addDataPoint(self, env_name, total_reward):
+        # FIXME: switch to total time steps instead
+
+        data = self.env_data.setdefault(
+            env_name,
+            dict(
+                y_values = [],
+                x_values = [],
+                num_episodes = 0,
+                running_avg = 0,
+                plot = None
+            )
+        )
+
+        data['num_episodes'] += 1
+
+        data['running_avg'] *= 0.995
+        data['running_avg'] += 0.005 * total_reward
+
+        if data['num_episodes'] % 100 == 0:
+            data['x_values'].append(data['num_episodes'])
+            data['y_values'].append(data['running_avg'])
+
+            data['plot'] = self.vis.line(
+                X = np.array(data['x_values']),
+                Y = np.array(data['y_values']),
+                opts = dict(
+                    #title="Reward per episode",
+                    title = env_name,
+                    xlabel='Episodes',
+                    ylabel='Reward per episode',
+                    ytickmin=0,
+                    ytickmax=1,
+                ),
+                win = data['plot']
+            )
+
+"""
+opts.title : figure title
+opts.width : figure width
+opts.height : figure height
+opts.showlegend : show legend (true or false)
+legend=['Didnt', 'Update'],
+xtickmin=-50,
+xtickmax=50,
+xtickstep=0.5,
+ytickmin=-50,
+ytickmax=50,
+ytickstep=0.5,
+"""
