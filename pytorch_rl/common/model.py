@@ -3,8 +3,8 @@ from functools import reduce
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from distributions import Categorical, DiagGaussian
-from utils import orthogonal
+from common.distributions import Categorical, DiagGaussian
+from common.utils import orthogonal
 
 class FFPolicy(nn.Module):
     def __init__(self):
